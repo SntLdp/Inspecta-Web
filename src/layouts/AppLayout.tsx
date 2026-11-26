@@ -632,9 +632,9 @@ export default function AppLayout() {
                   <span>Mi perfil</span>
                 </button>
 
-                {/* CONFIGURACIÓN */}
+                {/* CONFIGURACIÓN inhabilitado*/}
 
-                <button
+                {/* <button
                   type="button"
                   onClick={() => {
                     setProfileOpen(false);
@@ -646,7 +646,7 @@ export default function AppLayout() {
                   />
 
                   <span>Configuración</span>
-                </button>
+                </button> */}
 
                 {/* CAMBIAR ORGANIZACIÓN */}
 
