@@ -27,6 +27,8 @@ import {
   Settings,
 } from "@mui/icons-material";
 
+import { useAdministrationCapabilities } from "../hooks/useAdministrationCapabilities";
+
 import { getLocationHierarchy } from "../services/locations.service";
 
 import LocationFormDialog from "./LocationFormDialog";
@@ -93,6 +95,7 @@ interface ProductionLineItemProps {
   onOpenForm: (config: LocationFormConfig) => void;
   onOpenStatus: (config: LocationStatusConfig) => void;
   disabled: boolean;
+  canManage: boolean;
 }
 
 function ProductionLineItem({
@@ -100,6 +103,7 @@ function ProductionLineItem({
   onOpenForm,
   onOpenStatus,
   disabled,
+  canManage,
 }: ProductionLineItemProps) {
   return (
     <Box
@@ -146,38 +150,40 @@ function ProductionLineItem({
           available={line.available}
         />
 
-        <Button
-          size="small"
-          variant="outlined"
-          startIcon={<Edit />}
-              disabled={disabled}
-          onClick={() =>
-            onOpenForm({
-              mode: "edit",
-              kind: "production-line",
-              id: line.id,
-            })
-          }
-        >
-          Editar
-        </Button>
+        {canManage && (<>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<Edit />}
+            disabled={disabled}
+            onClick={() =>
+              onOpenForm({
+                mode: "edit",
+                kind: "production-line",
+                id: line.id,
+              })
+            }
+          >
+            Editar
+          </Button>
 
-        <Button
-          size="small"
-          variant="outlined"
-          color={line.status ? "error" : "success"}
-              disabled={disabled}
-          onClick={() =>
-            onOpenStatus({
-              kind: "production-line",
-              id: line.id,
-              name: line.name,
-              status: line.status,
-            })
-          }
-        >
-          {line.status ? "Desactivar" : "Reactivar"}
-        </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color={line.status ? "error" : "success"}
+            disabled={disabled}
+            onClick={() =>
+              onOpenStatus({
+                kind: "production-line",
+                id: line.id,
+                name: line.name,
+                status: line.status,
+              })
+            }
+          >
+            {line.status ? "Desactivar" : "Reactivar"}
+          </Button>
+        </>)}
       </Stack>
     </Box>
   );
@@ -192,6 +198,7 @@ interface AreaItemProps {
   onOpenForm: (config: LocationFormConfig) => void;
   onOpenStatus: (config: LocationStatusConfig) => void;
   disabled: boolean;
+  canManage: boolean;
 }
 
 function AreaItem({
@@ -199,6 +206,7 @@ function AreaItem({
   onOpenForm,
   onOpenStatus,
   disabled,
+  canManage,
 }: AreaItemProps) {
   return (
     <Accordion
@@ -266,68 +274,70 @@ function AreaItem({
 
           {/* ACCIONES DEL ÁREA */}
 
-          <Stack
-            direction="row"
-            spacing={1}
-            useFlexGap
-            sx={{ flexWrap: "wrap" }}
-          >
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<Edit />}
-              disabled={disabled}
-              onClick={() =>
-                onOpenForm({
-                  mode: "edit",
-                  kind: "area",
-                  id: area.id,
-                })
-              }
+          {canManage && (
+            <Stack
+              direction="row"
+              spacing={1}
+              useFlexGap
+              sx={{ flexWrap: "wrap" }}
             >
-              Editar área
-            </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Edit />}
+                disabled={disabled}
+                onClick={() =>
+                  onOpenForm({
+                    mode: "edit",
+                    kind: "area",
+                    id: area.id,
+                  })
+                }
+              >
+                Editar área
+              </Button>
 
-            <Button
-              size="small"
-              variant="outlined"
-              color={area.status ? "error" : "success"}
-              disabled={disabled}
-              onClick={() =>
-                onOpenStatus({
-                  kind: "area",
-                  id: area.id,
-                  name: area.name,
-                  status: area.status,
-                })
-              }
-            >
-              {area.status ? "Desactivar" : "Reactivar"}
-            </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color={area.status ? "error" : "success"}
+                disabled={disabled}
+                onClick={() =>
+                  onOpenStatus({
+                    kind: "area",
+                    id: area.id,
+                    name: area.name,
+                    status: area.status,
+                  })
+                }
+              >
+                {area.status ? "Desactivar" : "Reactivar"}
+              </Button>
 
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<Add />}
-              disabled={disabled || !area.available}
-              onClick={() =>
-                onOpenForm({
-                  mode: "create",
-                  kind: "production-line",
-                  parentId: area.id,
-                  parentName: area.name,
-                })
-              }
-              sx={{
-                backgroundColor: "#16324F",
-                "&:hover": {
-                  backgroundColor: "#244766",
-                },
-              }}
-            >
-              Nueva línea
-            </Button>
-          </Stack>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<Add />}
+                disabled={disabled || !area.available}
+                onClick={() =>
+                  onOpenForm({
+                    mode: "create",
+                    kind: "production-line",
+                    parentId: area.id,
+                    parentName: area.name,
+                  })
+                }
+                sx={{
+                  backgroundColor: "#16324F",
+                  "&:hover": {
+                    backgroundColor: "#244766",
+                  },
+                }}
+              >
+                Nueva línea
+              </Button>
+            </Stack>
+          )}
 
           <Divider />
 
@@ -355,6 +365,7 @@ function AreaItem({
                 onOpenForm={onOpenForm}
                 onOpenStatus={onOpenStatus}
                 disabled={disabled}
+                canManage={canManage}
               />
             ))
           )}
@@ -373,6 +384,7 @@ interface PlantItemProps {
   onOpenForm: (config: LocationFormConfig) => void;
   onOpenStatus: (config: LocationStatusConfig) => void;
   disabled: boolean;
+  canManage: boolean;
 }
 
 function PlantItem({
@@ -380,6 +392,7 @@ function PlantItem({
   onOpenForm,
   onOpenStatus,
   disabled,
+  canManage,
 }: PlantItemProps) {
   return (
     <Accordion
@@ -459,68 +472,70 @@ function PlantItem({
 
           {/* ACCIONES DE LA PLANTA */}
 
-          <Stack
-            direction="row"
-            spacing={1}
-            useFlexGap
-            sx={{ flexWrap: "wrap" }}
-          >
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<Edit />}
-              disabled={disabled}
-              onClick={() =>
-                onOpenForm({
-                  mode: "edit",
-                  kind: "plant",
-                  id: plant.id,
-                })
-              }
+          {canManage && (
+            <Stack
+              direction="row"
+              spacing={1}
+              useFlexGap
+              sx={{ flexWrap: "wrap" }}
             >
-              Editar planta
-            </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<Edit />}
+                disabled={disabled}
+                onClick={() =>
+                  onOpenForm({
+                    mode: "edit",
+                    kind: "plant",
+                    id: plant.id,
+                  })
+                }
+              >
+                Editar planta
+              </Button>
 
-            <Button
-              size="small"
-              variant="outlined"
-              color={plant.status ? "error" : "success"}
-              disabled={disabled}
-              onClick={() =>
-                onOpenStatus({
-                  kind: "plant",
-                  id: plant.id,
-                  name: plant.name,
-                  status: plant.status,
-                })
-              }
-            >
-              {plant.status ? "Desactivar" : "Reactivar"}
-            </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color={plant.status ? "error" : "success"}
+                disabled={disabled}
+                onClick={() =>
+                  onOpenStatus({
+                    kind: "plant",
+                    id: plant.id,
+                    name: plant.name,
+                    status: plant.status,
+                  })
+                }
+              >
+                {plant.status ? "Desactivar" : "Reactivar"}
+              </Button>
 
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<Add />}
-              disabled={disabled || !plant.available}
-              onClick={() =>
-                onOpenForm({
-                  mode: "create",
-                  kind: "area",
-                  parentId: plant.id,
-                  parentName: plant.name,
-                })
-              }
-              sx={{
-                backgroundColor: "#16324F",
-                "&:hover": {
-                  backgroundColor: "#244766",
-                },
-              }}
-            >
-              Nueva área
-            </Button>
-          </Stack>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<Add />}
+                disabled={disabled || !plant.available}
+                onClick={() =>
+                  onOpenForm({
+                    mode: "create",
+                    kind: "area",
+                    parentId: plant.id,
+                    parentName: plant.name,
+                  })
+                }
+                sx={{
+                  backgroundColor: "#16324F",
+                  "&:hover": {
+                    backgroundColor: "#244766",
+                  },
+                }}
+              >
+                Nueva área
+              </Button>
+            </Stack>
+          )}
 
           <Divider />
 
@@ -548,6 +563,7 @@ function PlantItem({
                 onOpenForm={onOpenForm}
                 onOpenStatus={onOpenStatus}
                 disabled={disabled}
+                canManage={canManage}
               />
             ))
           )}
@@ -561,7 +577,15 @@ function PlantItem({
 // COMPONENTE PRINCIPAL
 // =====================================================
 
-export default function LocationAdministration() {
+interface LocationAdministrationProps {
+  onChanged?: () => void;
+}
+
+export default function LocationAdministration({
+  onChanged,
+}: LocationAdministrationProps) {
+  const { canViewLocations, canManageLocations, canViewAllLocations } = useAdministrationCapabilities();
+  const canWrite = canViewLocations && canManageLocations;
   // ===================================================
   // ESTADOS
   // ===================================================
@@ -597,22 +621,26 @@ export default function LocationAdministration() {
   const requestPending = useRef(false);
 
   const refresh = useCallback(() => {
-    if (requestPending.current) return;
+    if (!canViewLocations || requestPending.current) return;
     requestPending.current = true;
     setRefreshing(true);
     setRefreshVersion((current) => current + 1);
-  }, []);
+  }, [canViewLocations]);
 
   function handleFormSaved(message: string) {
     setFormConfig(null);
     setSuccessMessage(message);
+
     refresh();
+    onChanged?.();
   }
 
   function handleStatusSaved(message: string) {
     setStatusConfig(null);
     setSuccessMessage(message);
+
     refresh();
+    onChanged?.();
   }
 
   function handleFormClose() {
@@ -623,6 +651,19 @@ export default function LocationAdministration() {
   // página conservan el listado y los acordeones montados.
   useEffect(() => {
     const controller = new AbortController();
+    if (!canViewLocations) {
+      setPlants([]);
+      setTotal(0);
+      setLastPage(1);
+      setHasLoaded(false);
+      setLoading(false);
+      setRefreshing(false);
+      setError(null);
+      setRefreshError(null);
+      loadedPage.current = null;
+      requestPending.current = false;
+      return () => controller.abort();
+    }
     const silent = loadedPage.current === page;
     requestPending.current = true;
     setLoading(!silent);
@@ -670,9 +711,26 @@ export default function LocationAdministration() {
 
     void loadLocations();
     return () => controller.abort();
-  }, [page, refreshVersion]);
+  }, [page, refreshVersion, canViewLocations, canViewAllLocations]);
 
-  const actionsDisabled = loading || refreshing || Boolean(refreshError) || Boolean(error);
+  useEffect(() => {
+    if (!canWrite) {
+      setFormConfig(null);
+      setStatusConfig(null);
+    }
+  }, [canWrite]);
+
+  const actionsDisabled = !canWrite || loading || refreshing || Boolean(refreshError) || Boolean(error);
+
+  function openForm(config: LocationFormConfig) {
+    if (!actionsDisabled) setFormConfig(config);
+  }
+
+  function openStatus(config: LocationStatusConfig) {
+    if (!actionsDisabled) setStatusConfig(config);
+  }
+
+  if (!canViewLocations) return null;
 
   // ===================================================
   // INTERFAZ
@@ -708,9 +766,7 @@ export default function LocationAdministration() {
             variant="body2"
             sx={{ color: "text.secondary" }}
           >
-            Consulta y administra las plantas,
-            áreas y líneas de producción
-            de la organización.
+            {canWrite ? "Consulta y administra las plantas, áreas y líneas de producción de la organización." : "Consulta las plantas, áreas y líneas de producción accesibles de la organización."}
           </Typography>
         </Box>
 
@@ -731,27 +787,32 @@ export default function LocationAdministration() {
             Actualizar
           </Button>
 
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            disabled={actionsDisabled}
-            onClick={() =>
-              setFormConfig({
-                mode: "create",
-                kind: "plant",
-              })
-            }
-            sx={{
-              backgroundColor: "#16324F",
-              "&:hover": {
-                backgroundColor: "#244766",
-              },
-            }}
-          >
-            Nueva planta
-          </Button>
+          {canWrite && (
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              disabled={actionsDisabled}
+              onClick={() =>
+                openForm({
+                  mode: "create",
+                  kind: "plant",
+                })
+              }
+              sx={{
+                backgroundColor: "#16324F",
+                "&:hover": {
+                  backgroundColor: "#244766",
+                },
+              }}
+            >
+              Nueva planta
+            </Button>
+          )}
         </Stack>
       </Stack>
+
+      {!canWrite && <Alert severity="info">Consulta de solo lectura. No tienes permisos para administrar ubicaciones.</Alert>}
+      {!canViewAllLocations && <Alert severity="info">El listado está limitado a las ubicaciones accesibles según tus asignaciones.</Alert>}
 
       {/* LEYENDA DE ESTADOS */}
 
@@ -875,9 +936,10 @@ export default function LocationAdministration() {
                 <PlantItem
                   key={plant.id}
                   plant={plant}
-                  onOpenForm={setFormConfig}
-                  onOpenStatus={setStatusConfig}
+                  onOpenForm={openForm}
+                  onOpenStatus={openStatus}
                   disabled={actionsDisabled}
+                  canManage={canWrite}
                 />
               ))}
             </Stack>
@@ -910,15 +972,15 @@ export default function LocationAdministration() {
 
       {/* FORMULARIO DE CREACIÓN Y EDICIÓN */}
 
-      <LocationFormDialog
+      {canWrite && <LocationFormDialog
         config={formConfig}
         onClose={handleFormClose}
         onSaved={handleFormSaved}
-      />
+      />}
 
       {/* CONFIRMACIÓN DE CAMBIO DE ESTADO */}
 
-      {statusConfig && (
+      {canWrite && statusConfig && (
         <LocationStatusDialog
           key={`${statusConfig.kind}-${statusConfig.id}`}
           config={statusConfig}

@@ -1,19 +1,33 @@
-
 import {
   apiRequest,
   clearOrganizationId,
   clearSession,
+  getAuthToken,
   setAuthToken,
 } from "../api/client";
 
-export interface AuthUser {
-  id: string;
-  name: string;
-  email: string;
-  organization_id?: string | null;
-  role?: string;
-  [key: string]: unknown;
-}
+import {
+  getStoredUser,
+  isAuthUser,
+  setStoredUser,
+  updateStoredUser,
+} from "../auth/user.store";
+
+import type {
+  AuthUser,
+} from "../auth/user.store";
+
+/* =====================================================
+   EXPORTACIONES DE COMPATIBILIDAD
+   ===================================================== */
+
+export type { AuthUser } from "../auth/user.store";
+
+export { getStoredUser } from "../auth/user.store";
+
+/* =====================================================
+   TIPOS DE RESPUESTA
+   ===================================================== */
 
 interface LoginResponse {
   message?: string;
@@ -35,20 +49,9 @@ interface CurrentUserResponse {
   [key: string]: unknown;
 }
 
-const USER_KEY = "inspecta_user";
-
-export function getStoredUser(): AuthUser | null {
-  const storedUser = localStorage.getItem(USER_KEY);
-
-  if (!storedUser) return null;
-
-  try {
-    return JSON.parse(storedUser) as AuthUser;
-  } catch {
-    localStorage.removeItem(USER_KEY);
-    return null;
-  }
-}
+/* =====================================================
+   INICIO DE SESIÓN
+   ===================================================== */
 
 export async function login(
   email: string,
@@ -57,15 +60,28 @@ export async function login(
   // Evita reutilizar la organización de una sesión anterior.
   clearOrganizationId();
 
-  const response = await apiRequest<LoginResponse>("/auth/login", {
-    method: "POST",
-    body: { email, password },
-  });
+  const response = await apiRequest<LoginResponse>(
+    "/auth/login",
+    {
+      method: "POST",
+      body: {
+        email,
+        password,
+      },
+    }
+  );
 
-  const token = response.data?.token ?? response.token;
-  const user = response.data?.user ?? response.user;
+  const token =
+    response.data?.token ?? response.token;
 
-  if (!token || !user) {
+  const user =
+    response.data?.user ?? response.user;
+
+  if (
+    typeof token !== "string" ||
+    token.length === 0 ||
+    !isAuthUser(user)
+  ) {
     throw new Error(
       response.message ??
         "La API no devolvió el token o los datos del usuario esperados."
@@ -73,38 +89,85 @@ export async function login(
   }
 
   setAuthToken(token);
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  setStoredUser(user);
 
   return user;
 }
 
-export async function getCurrentUser(): Promise<AuthUser> {
-  const response = await apiRequest<CurrentUserResponse>("/auth/me", {
-    method: "GET",
-  });
+/* =====================================================
+   CONSULTAR USUARIO AUTENTICADO
+   ===================================================== */
 
-  const user = response.data ?? response.user ?? response;
+export async function getCurrentUser(
+  signal?: AbortSignal
+): Promise<AuthUser> {
+  const token = getAuthToken();
+
+  const response = await apiRequest<CurrentUserResponse>(
+    "/auth/me",
+    {
+      method: "GET",
+      signal,
+    }
+  );
 
   if (
-    !user ||
-    typeof user !== "object" ||
-    !("id" in user) ||
-    !("email" in user)
+    signal?.aborted ||
+    !token ||
+    getAuthToken() !== token
   ) {
-    throw new Error("La API no devolvió los datos esperados del usuario.");
+    throw new DOMException(
+      "La sesión cambió durante la solicitud.",
+      "AbortError"
+    );
   }
 
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  const user =
+    response.data ??
+    response.user ??
+    response;
 
-  return user as AuthUser;
+  if (!isAuthUser(user)) {
+    throw new Error(
+      "La API no devolvió los datos esperados del usuario."
+    );
+  }
+
+  const storedUser = getStoredUser();
+
+  if (
+    storedUser &&
+    storedUser.id !== user.id
+  ) {
+    throw new Error(
+      "La identidad recibida no corresponde a la sesión actual."
+    );
+  }
+
+  updateStoredUser(user);
+
+  return user;
 }
 
+/* =====================================================
+   CIERRE DE SESIÓN
+   ===================================================== */
+
 export async function logout(): Promise<void> {
+  const token = getAuthToken();
+
   try {
-    await apiRequest<void>("/auth/logout", {
-      method: "POST",
-    });
+    await apiRequest<void>(
+      "/auth/logout",
+      {
+        method: "POST",
+      }
+    );
   } finally {
-    clearSession();
+    // Una respuesta antigua no debe eliminar
+    // una sesión iniciada posteriormente.
+    if (getAuthToken() === token) {
+      clearSession();
+    }
   }
 }

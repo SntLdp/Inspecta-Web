@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+
 import { useSearchParams } from "react-router-dom";
 
 import {
@@ -36,6 +42,18 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import Alert from "@mui/material/Alert";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import CancelIcon from "@mui/icons-material/Cancel";
+
+import InspectionReviewActions from "../components/InspectionReviewActions";
+
+import { getProfileMembership } from "../services/profile.service";
+
+import { useAuthUser } from "../hooks/useAuthUser";
+
+import type { ProfileMembership } from "../types/profile.types";
+
+import Snackbar from "@mui/material/Snackbar";
 
 import {
   isApiConfigured,
@@ -110,6 +128,25 @@ export default function Inspecciones() {
   const inspectionId = searchParams.get("inspectionId");
   const organizationId = getOrganizationId();
 
+  const authUser = useAuthUser();
+
+  const userId = authUser?.id ?? null;
+
+  const [reviewMembership, setReviewMembership] =
+    useState<ProfileMembership | null>(null);
+
+  const [reviewMembershipUserId, setReviewMembershipUserId] =
+    useState<string | null>(null);
+
+  const [reviewSaving, setReviewSaving] =
+    useState(false);
+
+  const [reviewSuccess, setReviewSuccess] =
+    useState("");
+
+  const [reviewAccessError, setReviewAccessError] =
+    useState("");
+
   const [cargandoAccesoDirecto, setCargandoAccesoDirecto] =
     useState(false);
 
@@ -134,6 +171,134 @@ export default function Inspecciones() {
   const [errorDetalle, setErrorDetalle] = useState("");
   const [incidenciasReales, setIncidenciasReales] = useState<Incident[]>([]);
   const [errorIncidencias, setErrorIncidencias] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    setReviewMembership(null);
+    setReviewMembershipUserId(null);
+    setReviewAccessError("");
+
+    if (!userId || !organizationId) {
+      return () => controller.abort();
+    }
+
+    async function cargarPermisosRevision() {
+      try {
+        const membership = await getProfileMembership(
+          controller.signal
+        );
+
+        if (
+          controller.signal.aborted ||
+          getOrganizationId() !== organizationId ||
+          membership.organization.id !== organizationId
+        ) {
+          return;
+        }
+
+        setReviewMembership(membership);
+        setReviewMembershipUserId(userId);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setReviewAccessError(
+          error instanceof Error
+            ? error.message
+            : "No fue posible consultar los permisos de revisión."
+        );
+      }
+    }
+
+    void cargarPermisosRevision();
+
+    return () => {
+      controller.abort();
+    };
+  }, [userId, organizationId]);
+
+  const canReviewInspection = useMemo(() => {
+    if (
+      !userId ||
+      !organizationId ||
+      !reviewMembership ||
+      !detalleReal
+    ) {
+      return false;
+    }
+
+    if (
+      reviewMembershipUserId !== userId ||
+      reviewMembership.organization.id !== organizationId ||
+      detalleReal.organization_id !== organizationId
+    ) {
+      return false;
+    }
+
+    if (
+      reviewMembership.membership.status !== "active"
+    ) {
+      return false;
+    }
+
+    if (
+      !reviewMembership.permissions.includes(
+        "inspections.manage"
+      )
+    ) {
+      return false;
+    }
+
+    if (detalleReal.user_id === userId) {
+      return false;
+    }
+
+    if (detalleReal.status !== "completed") {
+      return false;
+    }
+
+    if (
+      detalleReal.supervisor_id !== null ||
+      detalleReal.supervisor_confirmed_at != null ||
+      detalleReal.rejected_at != null ||
+      detalleReal.supervisor_observations != null
+    ) {
+      return false;
+    }
+
+    const locations = reviewMembership.locations;
+
+    if (!locations.can_view) {
+      return false;
+    }
+
+    if (locations.view_all) {
+      return true;
+    }
+
+    const hasPlantAccess = locations.plants.some(
+      (plant) =>
+        plant.id === detalleReal.plant_id &&
+        plant.available
+    );
+
+    const hasAreaAccess = locations.areas.some(
+      (area) =>
+        area.id === detalleReal.area_id &&
+        area.plant_id === detalleReal.plant_id &&
+        area.available
+    );
+
+    return hasPlantAccess || hasAreaAccess;
+  }, [
+    userId,
+    organizationId,
+    reviewMembership,
+    reviewMembershipUserId,
+    detalleReal,
+  ]);
 
   useEffect(() => {
     if (!inspectionId) {
@@ -210,7 +375,65 @@ export default function Inspecciones() {
     setCargandoAccesoDirecto(false);
   }
 
+  function handleInspectionReviewed(
+    updatedInspection: InspectionDetail
+  ) {
+    if (
+      updatedInspection.organization_id !==
+      getOrganizationId()
+    ) {
+      return;
+    }
+
+    const updatedRow = convertirInspeccionApi(
+      updatedInspection
+    );
+
+    setDetalleReal((previous) => {
+      if (
+        !previous ||
+        previous.id !== updatedInspection.id
+      ) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        ...updatedInspection,
+      };
+    });
+
+    setInspeccionSeleccionada((previous) => {
+      if (
+        !previous ||
+        previous.id !== updatedInspection.id
+      ) {
+        return previous;
+      }
+
+      return updatedRow;
+    });
+
+    setDatosInspecciones((previous) =>
+      previous.map((inspection) =>
+        inspection.id === updatedInspection.id
+          ? updatedRow
+          : inspection
+      )
+    );
+
+    setReviewSuccess(
+      updatedInspection.status === "confirmed"
+        ? "Inspección confirmada correctamente."
+        : "Inspección rechazada correctamente."
+    );
+  }
+
   function cerrarDetalle() {
+    if (reviewSaving) {
+      return;
+    }
+
     setInspeccionSeleccionada(null);
     limpiarAccesoDirecto();
   }
@@ -339,16 +562,24 @@ export default function Inspecciones() {
 
   const total = datosInspecciones.length;
 
-  const completadas = datosInspecciones.filter(
-    (item) => item.estado === "Completada" || item.estado === "Confirmada"
-  ).length;
-
   const enProceso = datosInspecciones.filter(
     (item) => item.estado === "En proceso"
   ).length;
 
   const pendientes = datosInspecciones.filter(
     (item) => item.estado === "Pendiente"
+  ).length;
+
+  const completadas = datosInspecciones.filter(
+    (item) => item.estado === "Completada"
+  ).length;
+
+  const confirmadas = datosInspecciones.filter(
+    (item) => item.estado === "Confirmada"
+  ).length;
+
+  const rechazadas = datosInspecciones.filter(
+    (item) => item.estado === "Rechazada"
   ).length;
 
   const generarPDF = async () => {
@@ -595,8 +826,8 @@ export default function Inspecciones() {
           display: "grid",
           gridTemplateColumns: {
             xs: "1fr",
-            sm: "repeat(2, 1fr)",
-            lg: "repeat(4, 1fr)",
+            sm: "repeat(2, minmax(0, 1fr))",
+            md: "repeat(3, minmax(0, 1fr))",
           },
           gap: 2,
           mb: 3,
@@ -627,11 +858,27 @@ export default function Inspecciones() {
         />
 
         <SummaryCard
-          title="Completadas"
+          title="Por revisar"
           value={completadas}
+          icon={<FactCheckIcon />}
+          iconColor="#B77900"
+          iconBackground="#FFF5D9"
+        />
+
+        <SummaryCard
+          title="Confirmadas"
+          value={confirmadas}
           icon={<CheckCircleIcon />}
           iconColor="#16803C"
           iconBackground="#EAF7EF"
+        />
+
+        <SummaryCard
+          title="Rechazadas"
+          value={rechazadas}
+          icon={<CancelIcon />}
+          iconColor="#C62828"
+          iconBackground="#FDECEC"
         />
       </Box>
 
@@ -1135,6 +1382,22 @@ export default function Inspecciones() {
                           </Typography>
                         </>
                       )}
+                      {reviewAccessError &&
+                        detalleReal.status === "completed" && (
+                          <Alert severity="warning">
+                            No fue posible comprobar los permisos de
+                            revisión. La inspección permanecerá en modo
+                            de solo lectura.
+                          </Alert>
+                        )}
+
+                      <InspectionReviewActions
+                        key={detalleReal.id}
+                        inspection={detalleReal}
+                        canReview={canReviewInspection}
+                        onReviewed={handleInspectionReviewed}
+                        onSavingChange={setReviewSaving}
+                      />
                     </Box>
                   </Stack>
                 )}
@@ -1142,6 +1405,7 @@ export default function Inspecciones() {
               <DialogActions sx={{ p: 2 }}>
                 <Button
                   onClick={cerrarDetalle}
+                  disabled={reviewSaving}
                   variant="contained"
                   sx={{ bgcolor: "#16324F", textTransform: "none", "&:hover": { bgcolor: "#234766" } }}
                 >
@@ -1153,10 +1417,27 @@ export default function Inspecciones() {
         })()}
       </Dialog>
 
+      <Snackbar
+        open={Boolean(reviewSuccess)}
+        autoHideDuration={5000}
+        onClose={() => setReviewSuccess("")}
+        anchorOrigin={{
+          vertical: "bottom",
+          horizontal: "right",
+        }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          onClose={() => setReviewSuccess("")}
+          sx={{ width: "100%" }}
+        >
+          {reviewSuccess}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
-
 
 type SummaryCardProps = {
   title: string;

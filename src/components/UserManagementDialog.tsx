@@ -30,6 +30,7 @@ import {
 import UserLocationsEditor from "./UserLocationsEditor";
 
 import { ApiError } from "../api/client";
+import { useAdministrationCapabilities } from "../hooks/useAdministrationCapabilities";
 
 import {
   getAdministrationUser,
@@ -207,6 +208,7 @@ export default function UserManagementDialog({
   onClose,
   onSaved,
 }: UserManagementDialogProps) {
+  const { canViewUsers, canAssignRoles, canManageMemberships, canViewLocations } = useAdministrationCapabilities();
   const [user, setUser] =
     useState<AdministrationUser | null>(null);
 
@@ -245,6 +247,11 @@ export default function UserManagementDialog({
     setPendingMembershipStatus,
   ] = useState<MembershipStatus | null>(null);
 
+  useEffect(() => {
+    if (!canViewLocations) setLocationsChanged(false);
+    if (!canManageMemberships) setPendingMembershipStatus(null);
+  }, [canViewLocations, canManageMemberships]);
+
   // ===================================================
   // CARGAR USUARIO Y ROLES
   // ===================================================
@@ -273,9 +280,7 @@ export default function UserManagementDialog({
             controller.signal
           ),
 
-          loadAllRoles(
-            controller.signal
-          ),
+          canAssignRoles ? loadAllRoles(controller.signal) : Promise.resolve([] as AdministrationRole[]),
         ]);
 
         if (controller.signal.aborted) {
@@ -373,10 +378,18 @@ export default function UserManagementDialog({
       }
     }
 
+    if (!canViewUsers) {
+      setUser(null);
+      setRoles([]);
+      setSelectedRoleIds([]);
+      setLocationsChanged(false);
+      setLoading(false);
+      return () => controller.abort();
+    }
     void loadData();
 
     return () => controller.abort();
-  }, [userId, refreshVersion]);
+  }, [userId, refreshVersion, canViewUsers, canAssignRoles, canViewLocations]);
 
   // ===================================================
   // ESTADO DE ROLES
@@ -395,6 +408,7 @@ export default function UserManagementDialog({
     );
 
   const canEditRoles =
+    canViewUsers && canAssignRoles && !loading &&
     Boolean(user) &&
     user?.account_status === true &&
     user?.membership.status === "active" &&
@@ -408,6 +422,7 @@ export default function UserManagementDialog({
     if (
       !canEditRoles ||
       locationsChanged ||
+      pendingMembershipStatus !== null ||
       savingRef.current
     ) {
       return;
@@ -448,6 +463,7 @@ export default function UserManagementDialog({
       !canEditRoles ||
       !rolesChanged ||
       locationsChanged ||
+      pendingMembershipStatus !== null ||
       savingRef.current
     ) {
       return;
@@ -519,8 +535,10 @@ export default function UserManagementDialog({
 
   async function saveMembershipStatus() {
     if (
+      !canViewUsers || !canManageMemberships || loading ||
       !user ||
       !pendingMembershipStatus ||
+      (pendingMembershipStatus === "active" && !user.account_status) ||
       savingRef.current ||
       rolesChanged || locationsChanged
     ) {
@@ -655,7 +673,7 @@ export default function UserManagementDialog({
         </DialogTitle>
 
         <DialogContent dividers>
-          {loading ? (
+          {!canViewUsers ? <Alert severity="warning">No tienes permisos para consultar este usuario.</Alert> : loading ? (
             <Stack
               spacing={2}
               sx={{
@@ -682,7 +700,7 @@ export default function UserManagementDialog({
                 </Alert>
               )}
 
-              {user && (
+              {canViewUsers && user && (
                 <>
                   {/* INFORMACIÓN GENERAL */}
 
@@ -777,9 +795,11 @@ export default function UserManagementDialog({
 
                     <SectionHeader
                       title="Roles asignados"
-                      description="Selecciona los roles que tendrá el usuario dentro de esta organización."
+                      description={canAssignRoles ? "Selecciona los roles que tendrá el usuario dentro de esta organización." : "Consulta los roles asignados al usuario dentro de esta organización."}
                     />
                   </Stack>
+
+                  {!canAssignRoles && <Alert severity="info">Consulta de solo lectura. No tienes permisos para modificar los roles asignados.</Alert>}
 
                   {rolesError && (
                     <Alert severity="warning">
@@ -819,7 +839,7 @@ export default function UserManagementDialog({
 
                         const disabled =
                           !canEditRoles ||
-                          Boolean(saving) ||
+                          Boolean(saving) || locationsChanged || pendingMembershipStatus !== null ||
                           (
                             !role.status &&
                             !selected &&
@@ -947,6 +967,7 @@ export default function UserManagementDialog({
                     </Alert>
                   )}
 
+                  {(canAssignRoles || rolesChanged) && (
                   <Stack
                     direction="row"
                     spacing={2}
@@ -966,10 +987,11 @@ export default function UserManagementDialog({
                       Descartar cambios
                     </Button>
 
+                    {canAssignRoles && (
                     <Button
                       variant="contained"
                       disabled={
-                        !canEditRoles ||
+                        !canEditRoles || pendingMembershipStatus !== null ||
                         locationsChanged ||
                         !rolesChanged ||
                         Boolean(saving)
@@ -992,10 +1014,13 @@ export default function UserManagementDialog({
                         ? "Guardando..."
                         : "Guardar roles"}
                     </Button>
+                    )}
                   </Stack>
+                  )}
 
                   <Divider />
 
+                  {canViewLocations ? (
                   <UserLocationsEditor
                     key={user.id}
                     user={user}
@@ -1010,6 +1035,7 @@ export default function UserManagementDialog({
                       onSaved(updatedUser, message);
                     }}
                   />
+                  ) : <Alert severity="info">No tienes permisos para consultar las ubicaciones asignadas al usuario.</Alert>}
 
                   <Divider />
 
@@ -1017,10 +1043,12 @@ export default function UserManagementDialog({
 
                   <SectionHeader
                     title="Administración de membresía"
-                    description="Controla el acceso del usuario a la organización actual."
+                    description={canManageMemberships ? "Controla el acceso del usuario a la organización actual." : "Consulta el estado de acceso del usuario a la organización actual."}
                   />
 
-                  {user.membership.status ===
+                  {!canManageMemberships ? (
+                    <Alert severity="info">Consulta de solo lectura. No tienes permisos para modificar esta membresía.</Alert>
+                  ) : user.membership.status ===
                   "active" ? (
                     <Alert severity="warning">
                       Revocar la membresía impide
@@ -1047,6 +1075,7 @@ export default function UserManagementDialog({
                     </Alert>
                   )}
 
+                  {canManageMemberships && (
                   <Box>
                     <Button
                       variant="outlined"
@@ -1080,6 +1109,7 @@ export default function UserManagementDialog({
                         : "Reactivar membresía"}
                     </Button>
                   </Box>
+                  )}
 
                   {user.membership.status ===
                     "revoked" &&
@@ -1111,7 +1141,7 @@ export default function UserManagementDialog({
 
       {/* CONFIRMACIÓN DE MEMBRESÍA */}
 
-      {pendingMembershipStatus && user && (
+      {canViewUsers && canManageMemberships && pendingMembershipStatus && user && (
         <Dialog
           open
           fullWidth

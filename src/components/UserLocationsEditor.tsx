@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Divider, FormControlLabel, Stack, TextField, Typography } from "@mui/material";
 import { Business, Save, Refresh } from "@mui/icons-material";
-import { apiRequest, ApiError } from "../api/client";
+import { ApiError } from "../api/client";
+import { useAdministrationCapabilities } from "../hooks/useAdministrationCapabilities";
 import { getAllLocationPlants } from "../services/locations.service";
 import { updateAdministrationUserLocations } from "../services/users.services";
 import type { AdministrationUser } from "../types/administration";
@@ -14,15 +15,6 @@ interface Props {
   onSavingChange: (saving: boolean) => void;
   onSaved: (user: AdministrationUser, message: string) => void;
 }
-interface Capabilities {
-  administration: {
-    manage_users: boolean;
-    view_locations: boolean;
-    manage_locations: boolean;
-    view_all_locations: boolean;
-    assign_locations: boolean;
-  };
-}
 function same(a: string[], b: string[]) {
   return a.length === b.length && a.every(id => b.includes(id));
 }
@@ -30,12 +22,12 @@ function message(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback;
 }
 export default function UserLocationsEditor({ user, disabled, onDirtyChange, onSavingChange, onSaved }: Props) {
+  const { canViewLocations, canReplaceUserLocations } = useAdministrationCapabilities();
   const originalPlants = user.locations.plants.map(p => p.id);
   const originalAreas = user.locations.areas.map(a => a.id);
   const [plantIds, setPlantIds] = useState(originalPlants);
   const [areaIds, setAreaIds] = useState(originalAreas);
   const [plants, setPlants] = useState<LocationPlant[]>([]);
-  const [capabilities, setCapabilities] = useState<Capabilities["administration"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
@@ -47,25 +39,21 @@ export default function UserLocationsEditor({ user, disabled, onDirtyChange, onS
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true); setError(null); setCapabilities(null);
+    setLoading(true); setError(null); setPlants([]);
     async function load() {
       try {
-        const result = await apiRequest<Capabilities>("/auth/capabilities", { signal: controller.signal });
-        if (controller.signal.aborted) return;
-        setCapabilities(result.administration);
-        if (result.administration.view_locations) {
-          const data = await getAllLocationPlants(controller.signal);
-          if (!controller.signal.aborted) setPlants(data);
-        }
+        if (!canViewLocations) return;
+        const data = await getAllLocationPlants(controller.signal);
+        if (!controller.signal.aborted) setPlants(data);
       } catch (err) {
         if (!controller.signal.aborted) setError(message(err, "No fue posible consultar las ubicaciones."));
       } finally { if (!controller.signal.aborted) setLoading(false); }
     }
     void load();
     return () => controller.abort();
-  }, [user.id, version]);
+  }, [user.id, version, canViewLocations]);
   // A full replacement is only offered to actors with unrestricted location visibility.
-  const canEdit = Boolean(capabilities?.manage_users && capabilities.view_locations && capabilities.manage_locations && capabilities.assign_locations && capabilities.view_all_locations && user.account_status && user.membership.status === "active" && !loading && !error);
+  const canEdit = canViewLocations && canReplaceUserLocations && user.account_status && user.membership.status === "active" && !loading && !error;
   const locked = disabled || saving || !canEdit;
   const knownPlants = new Set(plants.map(p => p.id));
   const knownAreas = new Set(plants.flatMap(p => p.areas.map(a => a.id)));
@@ -95,6 +83,7 @@ export default function UserLocationsEditor({ user, disabled, onDirtyChange, onS
   const q = search.trim().toLocaleLowerCase("es");
   const matches = (value: string) => value.toLocaleLowerCase("es").includes(q);
   const visiblePlants = plants.filter(p => matches(`${p.name} ${p.code}`) || p.areas.some(a => matches(`${a.name} ${a.code}`)));
+  if (!canViewLocations) return <Alert severity="info">No tienes permisos para consultar ubicaciones.</Alert>;
   return (
     <Stack spacing={2}>
       <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
@@ -130,10 +119,12 @@ export default function UserLocationsEditor({ user, disabled, onDirtyChange, onS
       {(missingPlants.length > 0 || missingAreas.length > 0) && <Box><Typography variant="subtitle2">Asignaciones existentes fuera del catálogo visible</Typography><Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap", mt: 1 }}>{missingPlants.map(p => <Chip key={p.id} label={p.name} />)}{missingAreas.map(a => <Chip key={a.id} label={a.name} />)}</Stack><Typography variant="caption" color="text.secondary">Se conservan en la solicitud; no se retiran automáticamente.</Typography></Box>}
       {dirty && <Alert severity="warning">Tienes cambios de ubicaciones pendientes de guardar.</Alert>}
       {feedback && <Alert severity={feedback.severity} onClose={() => setFeedback(null)}>{feedback.message}</Alert>}
+      {(canReplaceUserLocations || dirty) && (
       <Stack direction="row" spacing={2} useFlexGap sx={{ justifyContent: "flex-end", flexWrap: "wrap" }}>
         <Button disabled={!dirty || saving} onClick={reset}>Descartar cambios</Button>
-        <Button variant="contained" disabled={locked || !dirty} startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />} onClick={() => void save()}>{saving ? "Guardando..." : "Guardar ubicaciones"}</Button>
+        {canReplaceUserLocations && <Button variant="contained" disabled={locked || !dirty} startIcon={saving ? <CircularProgress size={18} color="inherit" /> : <Save />} onClick={() => void save()}>{saving ? "Guardando..." : "Guardar ubicaciones"}</Button>}
       </Stack>
+      )}
     </Stack>
   );
 }

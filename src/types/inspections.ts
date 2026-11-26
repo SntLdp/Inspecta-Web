@@ -4,6 +4,15 @@ export type InspectionStatus =
   | "confirmed"
   | "rejected";
 
+export type InspectionReviewInput =
+  | {
+      action: "confirm";
+    }
+  | {
+      action: "reject";
+      supervisor_observations: string;
+    };
+
 export interface InspectionBase {
   id: string;
   organization_id: string;
@@ -72,7 +81,10 @@ export interface InspectionQuestion {
   question_text: string;
   description: string | null;
   answer_type: string;
-  options: Array<{ value: string; label?: string }> | null;
+  options: Array<{
+    value: string;
+    label?: string;
+  }> | null;
   required: boolean;
   allows_evidence: boolean;
   display_order: number;

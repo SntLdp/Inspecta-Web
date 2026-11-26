@@ -1,9 +1,10 @@
+import { clearStoredUser } from "../auth/user.store";
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ?? ""
 ).replace(/\/+$/, "");
 
 const TOKEN_KEY = "inspecta_token";
-const USER_KEY = "inspecta_user";
 const ORGANIZATION_KEY = "inspecta_organization_id";
 
 /* =====================================================
@@ -27,6 +28,11 @@ const ORGANIZATION_ERROR_CODES = new Set([
   "organization_not_tenant",
   "organization_required",
   "organization_invalid",
+]);
+
+const TENANT_AUTH_PATHS = new Set([
+  "/auth/capabilities",
+  "/auth/me/membership",
 ]);
 
 /* =====================================================
@@ -77,8 +83,7 @@ export const clearOrganizationId = () =>
 export const clearSession = () => {
   clearAuthToken();
   clearOrganizationId();
-
-  localStorage.removeItem(USER_KEY);
+  clearStoredUser();
 };
 
 /* =====================================================
@@ -190,8 +195,10 @@ export async function apiRequest<T>(
     ? path
     : `/${path}`;
 
+  const pathname = normalizedPath.split(/[?#]/, 1)[0];
+
   const isLoginRequest =
-    normalizedPath === "/auth/login";
+    pathname === "/auth/login";
 
   const token = getAuthToken();
   const organizationId = getOrganizationId();
@@ -205,8 +212,8 @@ export async function apiRequest<T>(
   }
 
   const requiresOrganization =
-    !normalizedPath.startsWith("/auth/") ||
-    normalizedPath === "/auth/capabilities";
+    !pathname.startsWith("/auth/") ||
+    TENANT_AUTH_PATHS.has(pathname);
 
   if (organizationId && requiresOrganization) {
     headers.set(
