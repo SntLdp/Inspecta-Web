@@ -30,6 +30,8 @@ import Normativa from "./pages/Normativa";
 import Reportes from "./pages/Reportes";
 import Administracion from "./pages/Administracion";
 import SeleccionOrganizacion from "./pages/SeleccionOrganizacion";
+import MiPerfil from "./pages/MiPerfil";
+
 import RequireCapability from "./components/RequireCapability";
 
 import {
@@ -266,6 +268,13 @@ export default function App() {
                 <Administracion />
               </RequireCapability>
             }
+          />
+
+          {/* MI PERFIL */}
+
+          <Route
+            path="/mi-perfil"
+            element={<MiPerfil />}
           />
         </Route>
 

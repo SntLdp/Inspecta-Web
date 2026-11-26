@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import {
   NavLink,
   Outlet,
@@ -7,12 +12,20 @@ import {
 } from "react-router-dom";
 
 import { IonIcon } from "@ionic/react";
-import { clearAuthToken } from "../api/client";
-import { getStoredUser, logout } from "../services/auth.service";
-import inspectaLogo from "../assets/inspecta-logo.png";
-import { useOrganization } from "../contexts/OrganizationContext";
 
-import type { ModuleKey } from "../services/capabilities.service";
+import { logout } from "../services/auth.service";
+
+import { useAuthUser } from "../hooks/useAuthUser";
+
+import inspectaLogo from "../assets/inspecta-logo.png";
+
+import {
+  useOrganization,
+} from "../contexts/OrganizationContext";
+
+import type {
+  ModuleKey,
+} from "../services/capabilities.service";
 
 import {
   gridOutline,
@@ -31,8 +44,19 @@ import {
   swapHorizontalOutline,
 } from "ionicons/icons";
 
-const SIDEBAR_STORAGE_KEY = "inspecta_sidebar_collapsed";
-const SIDEBAR_BREAKPOINT = "(max-width: 900px)";
+/* =====================================================
+   CONFIGURACIÓN DEL SIDEBAR
+   ===================================================== */
+
+const SIDEBAR_STORAGE_KEY =
+  "inspecta_sidebar_collapsed";
+
+const SIDEBAR_BREAKPOINT =
+  "(max-width: 900px)";
+
+/* =====================================================
+   TIPOS
+   ===================================================== */
 
 interface NavigationItem {
   label: string;
@@ -40,6 +64,10 @@ interface NavigationItem {
   icon: string;
   capability: ModuleKey;
 }
+
+/* =====================================================
+   MÓDULOS DE NAVEGACIÓN
+   ===================================================== */
 
 const items: NavigationItem[] = [
   {
@@ -92,15 +120,33 @@ const items: NavigationItem[] = [
   },
 ];
 
+/* =====================================================
+   ESTADO INICIAL DEL SIDEBAR
+   ===================================================== */
+
 function getInitialSidebarState(): boolean {
-  if (window.matchMedia(SIDEBAR_BREAKPOINT).matches) {
+  if (
+    window.matchMedia(
+      SIDEBAR_BREAKPOINT
+    ).matches
+  ) {
     return true;
   }
 
-  return localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  return (
+    localStorage.getItem(
+      SIDEBAR_STORAGE_KEY
+    ) === "true"
+  );
 }
 
-function getInitials(name?: string | null): string {
+/* =====================================================
+   INICIALES DEL USUARIO
+   ===================================================== */
+
+function getInitials(
+  name?: string | null
+): string {
   if (!name?.trim()) {
     return "UI";
   }
@@ -109,15 +155,25 @@ function getInitials(name?: string | null): string {
     .trim()
     .split(/\s+/)
     .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
+    .map(
+      (word) =>
+        word.charAt(0).toUpperCase()
+    )
     .join("");
 }
+
+/* =====================================================
+   COMPONENTE PRINCIPAL
+   ===================================================== */
 
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const user = getStoredUser();
+  /* IDENTIDAD REACTIVA */
+
+  const user = useAuthUser();
+
   const {
     organization,
     roles,
@@ -128,27 +184,55 @@ export default function AppLayout() {
   } = useOrganization();
 
   /* =====================================================
-   MÓDULOS AUTORIZADOS
-   ===================================================== */
+     MÓDULOS AUTORIZADOS
+     ===================================================== */
 
   const visibleItems =
     loading || error
       ? []
-      : items.filter((item) =>
-        hasModule(item.capability)
-      );
+      : items.filter(
+          (item) =>
+            hasModule(item.capability)
+        );
 
-  const mainRef = useRef<HTMLElement>(null);
-  const profileRef = useRef<HTMLDivElement>(null);
-  const profileButtonRef = useRef<HTMLButtonElement>(null);
+  /* =====================================================
+     REFERENCIAS
+     ===================================================== */
 
-  const [profileOpen, setProfileOpen] = useState(false);
+  const mainRef =
+    useRef<HTMLElement>(null);
 
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    getInitialSidebarState
-  );
+  const profileRef =
+    useRef<HTMLDivElement>(null);
 
-  const userName = user?.name ?? "Usuario Inspecta";
+  const profileButtonRef =
+    useRef<HTMLButtonElement>(null);
+
+  /* =====================================================
+     ESTADOS
+     ===================================================== */
+
+  const [profileOpen, setProfileOpen] =
+    useState(false);
+
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(getInitialSidebarState);
+
+  const [loggingOut, setLoggingOut] =
+    useState(false);
+
+  const logoutRequestRef =
+    useRef(false);
+
+  /* =====================================================
+     INFORMACIÓN DEL USUARIO
+     ===================================================== */
+
+  const userName =
+    user?.name ?? "Usuario Inspecta";
+
+  const userEmail =
+    user?.email ?? "";
 
   const userRole = loading
     ? "Cargando roles..."
@@ -158,13 +242,19 @@ export default function AppLayout() {
         ? roles.join(", ")
         : "Sin rol asignado";
 
+  /* =====================================================
+     INFORMACIÓN ORGANIZACIONAL
+     ===================================================== */
+
   const organizationName = loading
     ? "Cargando organización..."
     : error
       ? "Organización no disponible"
-      : organization?.name ?? "Sin organización";
+      : organization?.name ??
+        "Sin organización";
 
-  const organizationCode = organization?.code ?? "";
+  const organizationCode =
+    organization?.code ?? "";
 
   /* =====================================================
      REINICIAR SCROLL AL CAMBIAR DE MÓDULO
@@ -176,6 +266,8 @@ export default function AppLayout() {
       left: 0,
       behavior: "instant",
     });
+
+    setProfileOpen(false);
   }, [location.pathname]);
 
   /* =====================================================
@@ -183,7 +275,10 @@ export default function AppLayout() {
      ===================================================== */
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(SIDEBAR_BREAKPOINT);
+    const mediaQuery =
+      window.matchMedia(
+        SIDEBAR_BREAKPOINT
+      );
 
     const handleBreakpointChange = (
       event: MediaQueryListEvent
@@ -192,7 +287,9 @@ export default function AppLayout() {
         setSidebarCollapsed(true);
       } else {
         setSidebarCollapsed(
-          localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true"
+          localStorage.getItem(
+            SIDEBAR_STORAGE_KEY
+          ) === "true"
         );
       }
 
@@ -221,18 +318,25 @@ export default function AppLayout() {
       return;
     }
 
-    const handleOutsideClick = (event: PointerEvent) => {
+    const handleOutsideClick = (
+      event: PointerEvent
+    ) => {
       if (
         event.target instanceof Node &&
-        !profileRef.current?.contains(event.target)
+        !profileRef.current?.contains(
+          event.target
+        )
       ) {
         setProfileOpen(false);
       }
     };
 
-    const handleEscape = (event: KeyboardEvent) => {
+    const handleEscape = (
+      event: KeyboardEvent
+    ) => {
       if (event.key === "Escape") {
         setProfileOpen(false);
+
         profileButtonRef.current?.focus();
       }
     };
@@ -265,12 +369,17 @@ export default function AppLayout() {
      ===================================================== */
 
   const toggleSidebar = () => {
-    const nextCollapsed = !sidebarCollapsed;
+    const nextCollapsed =
+      !sidebarCollapsed;
 
     setSidebarCollapsed(nextCollapsed);
     setProfileOpen(false);
 
-    if (!window.matchMedia(SIDEBAR_BREAKPOINT).matches) {
+    if (
+      !window.matchMedia(
+        SIDEBAR_BREAKPOINT
+      ).matches
+    ) {
       localStorage.setItem(
         SIDEBAR_STORAGE_KEY,
         String(nextCollapsed)
@@ -279,13 +388,41 @@ export default function AppLayout() {
   };
 
   /* =====================================================
-   CAMBIAR ORGANIZACIÓN
-   ===================================================== */
+     ABRIR MI PERFIL
+     ===================================================== */
 
-  const handleChangeOrganization = () => {
+  const handleOpenProfile = () => {
+    if (loggingOut) {
+      return;
+    }
+
     setProfileOpen(false);
 
-    navigate("/seleccionar-organizacion?mode=switch");
+    if (
+      window.matchMedia(
+        SIDEBAR_BREAKPOINT
+      ).matches
+    ) {
+      setSidebarCollapsed(true);
+    }
+
+    navigate("/mi-perfil");
+  };
+
+  /* =====================================================
+     CAMBIAR ORGANIZACIÓN
+     ===================================================== */
+
+  const handleChangeOrganization = () => {
+    if (loggingOut) {
+      return;
+    }
+
+    setProfileOpen(false);
+
+    navigate(
+      "/seleccionar-organizacion?mode=switch"
+    );
   };
 
   /* =====================================================
@@ -293,13 +430,27 @@ export default function AppLayout() {
      ===================================================== */
 
   const handleLogout = async () => {
+    if (logoutRequestRef.current) {
+      return;
+    }
+
+    logoutRequestRef.current = true;
+
+    setLoggingOut(true);
     setProfileOpen(false);
 
     try {
       await logout();
+    } catch {
+      /*
+       * auth.service.ts debe limpiar la sesión
+       * local mediante su bloque finally,
+       * incluso si falla la solicitud remota.
+       */
     } finally {
-      clearAuthToken();
-      localStorage.removeItem("inspecta_user");
+      logoutRequestRef.current = false;
+
+      setLoggingOut(false);
 
       navigate("/login", {
         replace: true,
@@ -307,12 +458,17 @@ export default function AppLayout() {
     }
   };
 
+  /* =====================================================
+     INTERFAZ
+     ===================================================== */
+
   return (
     <div
-      className={`app-shell ${sidebarCollapsed
-        ? "sidebar-collapsed"
-        : "sidebar-expanded"
-        }`}
+      className={`app-shell ${
+        sidebarCollapsed
+          ? "sidebar-collapsed"
+          : "sidebar-expanded"
+      }`}
     >
       {/* =====================================================
           SIDEBAR
@@ -375,7 +531,9 @@ export default function AppLayout() {
               ? `${organizationName} (${organizationCode})`
               : organizationName
           }
-          aria-label={`Organización activa: ${organizationName}`}
+          aria-label={
+            `Organización activa: ${organizationName}`
+          }
         >
           <div className="sidebar-organization-icon">
             <IonIcon
@@ -387,10 +545,14 @@ export default function AppLayout() {
           <div className="sidebar-organization-info">
             <span>Organización activa</span>
 
-            <strong>{organizationName}</strong>
+            <strong>
+              {organizationName}
+            </strong>
 
             {organizationCode && (
-              <small>{organizationCode}</small>
+              <small>
+                {organizationCode}
+              </small>
             )}
           </div>
         </div>
@@ -419,7 +581,9 @@ export default function AppLayout() {
                 }
               }}
               className={({ isActive }) =>
-                `nav-item ${isActive ? "active" : ""}`
+                `nav-item ${
+                  isActive ? "active" : ""
+                }`
               }
             >
               <IonIcon
@@ -428,7 +592,9 @@ export default function AppLayout() {
                 aria-hidden="true"
               />
 
-              <span>{item.label}</span>
+              <span>
+                {item.label}
+              </span>
             </NavLink>
           ))}
         </nav>
@@ -447,46 +613,83 @@ export default function AppLayout() {
                 id="inspecta-profile-menu"
                 className="profile-menu"
               >
+                {/* MI PERFIL */}
+
                 <button
                   type="button"
-                  onClick={() => {
-                    setProfileOpen(false);
-                  }}
+                  onClick={handleOpenProfile}
+                  disabled={loggingOut}
+                  aria-current={
+                    location.pathname === "/mi-perfil"
+                      ? "page"
+                      : undefined
+                  }
                 >
-                  <IonIcon icon={personOutline} />
+                  <IonIcon
+                    icon={personOutline}
+                  />
+
                   <span>Mi perfil</span>
                 </button>
 
+                {/* CONFIGURACIÓN */}
+
                 <button
                   type="button"
                   onClick={() => {
                     setProfileOpen(false);
                   }}
+                  disabled={loggingOut}
                 >
-                  <IonIcon icon={settingsOutline} />
+                  <IonIcon
+                    icon={settingsOutline}
+                  />
+
                   <span>Configuración</span>
                 </button>
 
+                {/* CAMBIAR ORGANIZACIÓN */}
+
                 <button
                   type="button"
-                  onClick={handleChangeOrganization}
+                  onClick={
+                    handleChangeOrganization
+                  }
+                  disabled={loggingOut}
                 >
-                  <IonIcon icon={swapHorizontalOutline} />
-                  <span>Cambiar organización</span>
+                  <IonIcon
+                    icon={swapHorizontalOutline}
+                  />
+
+                  <span>
+                    Cambiar organización
+                  </span>
                 </button>
 
                 <div className="profile-menu-divider" />
+
+                {/* CERRAR SESIÓN */}
 
                 <button
                   type="button"
                   className="logout-button"
                   onClick={handleLogout}
+                  disabled={loggingOut}
                 >
-                  <IonIcon icon={logOutOutline} />
-                  <span>Cerrar sesión</span>
+                  <IonIcon
+                    icon={logOutOutline}
+                  />
+
+                  <span>
+                    {loggingOut
+                      ? "Cerrando sesión..."
+                      : "Cerrar sesión"}
+                  </span>
                 </button>
               </div>
             )}
+
+            {/* TARJETA DEL USUARIO */}
 
             <div className="profile-card">
               <div
@@ -497,7 +700,13 @@ export default function AppLayout() {
               </div>
 
               <div className="profile-info">
-                <strong title={userName}>
+                <strong
+                  title={
+                    userEmail
+                      ? `${userName} (${userEmail})`
+                      : userName
+                  }
+                >
                   {userName}
                 </strong>
 
@@ -511,8 +720,11 @@ export default function AppLayout() {
                 type="button"
                 className="profile-more"
                 onClick={() =>
-                  setProfileOpen((previous) => !previous)
+                  setProfileOpen(
+                    (previous) => !previous
+                  )
                 }
+                disabled={loggingOut}
                 title="Opciones de usuario"
                 aria-label="Opciones de usuario"
                 aria-expanded={profileOpen}
@@ -557,11 +769,13 @@ export default function AppLayout() {
             >
               <div className="organization-spinner" />
 
-              <h2>Cargando organización</h2>
+              <h2>
+                Cargando organización
+              </h2>
 
               <p>
-                Estamos obteniendo la información y los
-                permisos de acceso.
+                Estamos obteniendo la información
+                y los permisos de acceso.
               </p>
             </div>
           ) : error ? (
@@ -574,7 +788,9 @@ export default function AppLayout() {
                 className="organization-error-icon"
               />
 
-              <h2>No fue posible cargar la organización</h2>
+              <h2>
+                No fue posible cargar la organización
+              </h2>
 
               <p>{error}</p>
 
