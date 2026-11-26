@@ -51,6 +51,10 @@ import {
   getLocationAreas,
 } from "../services/locations.service";
 
+import {
+  useAdministrationCapabilities,
+} from "../hooks/useAdministrationCapabilities";
+
 import type {
   AdministrationUser,
 } from "../types/administration";
@@ -58,6 +62,12 @@ import type {
 // =====================================================
 // TIPOS
 // =====================================================
+
+type AdministrationTab =
+  | "users"
+  | "roles"
+  | "locations"
+  | "organization";
 
 interface AdministrationSummary {
   users: number | null;
@@ -78,7 +88,18 @@ const EMPTY_SUMMARY: AdministrationSummary = {
 // =====================================================
 
 export default function Administracion() {
-  const [tab, setTab] = useState(0);
+  const {
+    ready,
+    canAccessAdministration,
+    canViewUsers,
+    canCreateUsers,
+    canViewRoles,
+    canViewLocations,
+    canViewOrganization,
+  } = useAdministrationCapabilities();
+
+  const [selectedTab, setSelectedTab] =
+    useState<AdministrationTab>("users");
 
   const [summary, setSummary] =
     useState<AdministrationSummary>(
@@ -98,49 +119,128 @@ export default function Administracion() {
     useState<string | null>(null);
 
   // ===================================================
-  // CONSULTAR INDICADORES
+  // PESTAÑAS AUTORIZADAS
+  // ===================================================
+
+  const availableTabs = [
+    {
+      value: "users" as const,
+      label: "Usuarios",
+      icon: <Person />,
+      visible: canViewUsers,
+    },
+    {
+      value: "roles" as const,
+      label: "Roles y permisos",
+      icon: <Security />,
+      visible: canViewRoles,
+    },
+    {
+      value: "locations" as const,
+      label: "Ubicaciones",
+      icon: <Business />,
+      visible: canViewLocations,
+    },
+    {
+      value: "organization" as const,
+      label: "Organización",
+      icon: <Settings />,
+      visible: canViewOrganization,
+    },
+  ].filter((item) => item.visible);
+
+  // Si la pestaña seleccionada deja de estar autorizada,
+  // utilizar automáticamente la primera disponible.
+
+  const activeTab =
+    availableTabs.some(
+      (item) => item.value === selectedTab
+    )
+      ? selectedTab
+      : availableTabs[0]?.value ?? null;
+
+  useEffect(() => {
+    if (
+      activeTab !== null &&
+      activeTab !== selectedTab
+    ) {
+      setSelectedTab(activeTab);
+    }
+  }, [
+    ready,
+    canAccessAdministration,
+    canViewUsers,
+    canViewRoles,
+    canViewLocations,
+    summaryRefreshVersion,
+  ]);
+
+  // ===================================================
+  // CERRAR FORMULARIO SI SE PIERDE LA CAPACIDAD
+  // ===================================================
+
+  useEffect(() => {
+    if (!canCreateUsers) {
+      setUserFormOpen(false);
+    }
+  }, [canCreateUsers]);
+
+  // ===================================================
+  // CONSULTAR INDICADORES AUTORIZADOS
   // ===================================================
 
   useEffect(() => {
     const controller = new AbortController();
 
-    async function loadSummary() {
-      setSummary({ ...EMPTY_SUMMARY });
+    setSummary({ ...EMPTY_SUMMARY });
 
+    if (!ready || !canAccessAdministration) {
+      return () => controller.abort();
+    }
+
+    async function loadSummary() {
       const [
         usersResult,
         activeMembershipsResult,
         areasResult,
         rolesResult,
       ] = await Promise.allSettled([
-        getAdministrationUsers(
-          {
-            page: 1,
-            perPage: 1,
-          },
-          controller.signal
-        ),
+        canViewUsers
+          ? getAdministrationUsers(
+            {
+              page: 1,
+              perPage: 1,
+            },
+            controller.signal
+          )
+          : Promise.resolve(null),
 
-        getAdministrationUsers(
-          {
-            page: 1,
-            perPage: 1,
-            status: "active",
-          },
-          controller.signal
-        ),
+        canViewUsers
+          ? getAdministrationUsers(
+            {
+              page: 1,
+              perPage: 1,
+              status: "active",
+            },
+            controller.signal
+          )
+          : Promise.resolve(null),
 
-        getLocationAreas(
-          controller.signal
-        ),
+        canViewLocations
+          ? getLocationAreas(
+            controller.signal
+          )
+          : Promise.resolve(null),
 
-        getAdministrationRoles(
-          {
-            page: 1,
-            perPage: 1,
-          },
-          controller.signal
-        ),
+        canViewRoles
+          ? getAdministrationRoles(
+            {
+              page: 1,
+              perPage: 1,
+            },
+            controller.signal
+          )
+          : Promise.resolve(null),
       ]);
 
       if (controller.signal.aborted) {
@@ -150,23 +250,24 @@ export default function Administracion() {
       setSummary({
         users:
           usersResult.status === "fulfilled"
-            ? usersResult.value.meta.total
+            ? usersResult.value?.meta.total ?? null
             : null,
 
         activeMemberships:
           activeMembershipsResult.status ===
             "fulfilled"
-            ? activeMembershipsResult.value.meta.total
+            ? activeMembershipsResult.value
+              ?.meta.total ?? null
             : null,
 
         roles:
           rolesResult.status === "fulfilled"
-            ? rolesResult.value.meta.total
+            ? rolesResult.value?.meta.total ?? null
             : null,
 
         areas:
           areasResult.status === "fulfilled"
-            ? areasResult.value.length
+            ? areasResult.value?.length ?? null
             : null,
       });
     }
@@ -174,7 +275,25 @@ export default function Administracion() {
     void loadSummary();
 
     return () => controller.abort();
-  }, [tab, summaryRefreshVersion]);
+  }, [
+    ready,
+    canAccessAdministration,
+    canViewUsers,
+    canViewRoles,
+    canViewLocations,
+    activeTab,
+    summaryRefreshVersion,
+  ]);
+
+  // ===================================================
+  // ACTUALIZAR INDICADORES
+  // ===================================================
+
+  function refreshSummary() {
+    setSummaryRefreshVersion(
+      (current) => current + 1
+    );
+  }
 
   // ===================================================
   // USUARIO CREADO
@@ -189,9 +308,7 @@ export default function Administracion() {
       (current) => current + 1
     );
 
-    setSummaryRefreshVersion(
-      (current) => current + 1
-    );
+    refreshSummary();
 
     setSuccessMessage(
       `El usuario ${user.name} se creó correctamente.`
@@ -199,7 +316,7 @@ export default function Administracion() {
   }
 
   // ===================================================
-  // TARJETAS DE RESUMEN
+  // TARJETAS DE RESUMEN AUTORIZADAS
   // ===================================================
 
   const summaryCards = [
@@ -212,6 +329,7 @@ export default function Administracion() {
         />
       ),
       background: "#E8F0F6",
+      visible: canViewUsers,
     },
     {
       label: "Membresías activas",
@@ -222,6 +340,7 @@ export default function Administracion() {
         />
       ),
       background: "#E8F5F2",
+      visible: canViewUsers,
     },
     {
       label: "Roles",
@@ -232,6 +351,7 @@ export default function Administracion() {
         />
       ),
       background: "#FFF5D9",
+      visible: canViewRoles,
     },
     {
       label: "Áreas",
@@ -242,8 +362,28 @@ export default function Administracion() {
         />
       ),
       background: "#F0F2F5",
+      visible: canViewLocations,
     },
-  ];
+  ].filter((item) => item.visible);
+
+  // ===================================================
+  // VALIDAR ACCESO AL MÓDULO
+  // ===================================================
+
+  if (!ready) {
+    return null;
+  }
+
+  if (!canAccessAdministration) {
+    return (
+      <section className="page-section">
+        <Alert severity="warning">
+          No tienes permisos para acceder al módulo
+          de Administración.
+        </Alert>
+      </section>
+    );
+  }
 
   // ===================================================
   // INTERFAZ
@@ -287,178 +427,194 @@ export default function Administracion() {
               mt: 0.5,
             }}
           >
-            Gestiona usuarios, roles, ubicaciones
-            y configuración de INSPECTA.
+            Gestiona usuarios, roles y ubicaciones,
+            y consulta la información de tu organización.
           </Typography>
         </Box>
 
-        {tab === 0 && (
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() =>
-              setUserFormOpen(true)
-            }
-          >
-            Nuevo usuario
-          </Button>
-        )}
+        {activeTab === "users" &&
+          canCreateUsers && (
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() =>
+                setUserFormOpen(true)
+              }
+            >
+              Nuevo usuario
+            </Button>
+          )}
       </Stack>
 
       {/* INDICADORES */}
 
-      <Grid
-        container
-        spacing={2}
-        sx={{ mb: 3 }}
-      >
-        {summaryCards.map((item) => (
-          <Grid
-            key={item.label}
-            size={{
-              xs: 12,
-              sm: 6,
-              md: 3,
-            }}
-          >
-            <Card>
-              <CardContent>
-                <Stack
-                  direction="row"
-                  spacing={2}
-                  sx={{
-                    alignItems: "center",
-                  }}
-                >
-                  <Box
+      {summaryCards.length > 0 && (
+        <Grid
+          container
+          spacing={2}
+          sx={{ mb: 3 }}
+        >
+          {summaryCards.map((item) => (
+            <Grid
+              key={item.label}
+              size={{
+                xs: 12,
+                sm: summaryCards.length === 1
+                  ? 12
+                  : 6,
+                md: 12 / summaryCards.length,
+              }}
+            >
+              <Card>
+                <CardContent>
+                  <Stack
+                    direction="row"
+                    spacing={2}
                     sx={{
-                      width: 44,
-                      height: 44,
-                      flexShrink: 0,
-                      borderRadius: 2,
-                      backgroundColor:
-                        item.background,
-                      display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
                     }}
                   >
-                    {item.icon}
-                  </Box>
-
-                  <Box>
-                    <Typography
-                      variant="body2"
+                    <Box
                       sx={{
-                        color: "#81909D",
+                        width: 44,
+                        height: 44,
+                        flexShrink: 0,
+                        borderRadius: 2,
+                        backgroundColor:
+                          item.background,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      {item.label}
-                    </Typography>
+                      {item.icon}
+                    </Box>
 
-                    <Typography
-                      variant="h5"
-                      sx={{
-                        fontWeight: 700,
-                        color: "#16324F",
-                      }}
-                    >
-                      {item.value ?? "—"}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+                    <Box>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          color: "#81909D",
+                        }}
+                      >
+                        {item.label}
+                      </Typography>
+
+                      <Typography
+                        variant="h5"
+                        sx={{
+                          fontWeight: 700,
+                          color: "#16324F",
+                        }}
+                      >
+                        {item.value ?? "—"}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      )}
 
       {/* PESTAÑAS */}
 
       <Card>
-        <Box
-          sx={{
-            borderBottom:
-              "1px solid #DCE6EE",
-          }}
-        >
-          <Tabs
-            value={tab}
-            onChange={(_, newValue) =>
-              setTab(newValue)
-            }
-            variant="scrollable"
-            scrollButtons="auto"
-          >
-            <Tab
-              icon={<Person />}
-              iconPosition="start"
-              label="Usuarios"
-            />
+        {availableTabs.length > 0 ? (
+          <>
+            <Box
+              sx={{
+                borderBottom:
+                  "1px solid #DCE6EE",
+              }}
+            >
+              <Tabs
+                value={activeTab ?? false}
+                onChange={(
+                  _,
+                  newValue: AdministrationTab
+                ) => {
+                  if (
+                    availableTabs.some(
+                      (item) =>
+                        item.value === newValue
+                    )
+                  ) {
+                    setSelectedTab(newValue);
+                  }
+                }}
+                variant="scrollable"
+                scrollButtons="auto"
+              >
+                {availableTabs.map((item) => (
+                  <Tab
+                    key={item.value}
+                    value={item.value}
+                    icon={item.icon}
+                    iconPosition="start"
+                    label={item.label}
+                  />
+                ))}
+              </Tabs>
+            </Box>
 
-            <Tab
-              icon={<Security />}
-              iconPosition="start"
-              label="Roles y permisos"
-            />
+            {/* USUARIOS */}
 
-            <Tab
-              icon={<Business />}
-              iconPosition="start"
-              label="Ubicaciones"
-            />
+            {activeTab === "users" &&
+              canViewUsers && (
+                <CardContent>
+                  <UserAdministration
+                    key={`users-${usersRefreshVersion}`}
+                    onChanged={refreshSummary}
+                  />
+                </CardContent>
+              )}
 
-            <Tab
-              icon={<Settings />}
-              iconPosition="start"
-              label="Organización"
-            />
-          </Tabs>
-        </Box>
+            {/* ROLES Y PERMISOS */}
 
-        {/* USUARIOS */}
+            {activeTab === "roles" &&
+              canViewRoles && (
+                <CardContent>
+                  <RoleAdministration
+                    onChanged={refreshSummary}
+                  />
+                </CardContent>
+              )}
 
-        {tab === 0 && (
+            {/* UBICACIONES */}
+
+            {activeTab === "locations" &&
+              canViewLocations && (
+                <CardContent>
+                  <LocationAdministration
+                    onChanged={refreshSummary}
+                  />
+                </CardContent>
+              )}
+
+            {/* ORGANIZACIÓN */}
+
+            {activeTab === "organization" &&
+              canViewOrganization && (
+                <CardContent>
+                  <ConfigurationAdministration />
+                </CardContent>
+              )}
+          </>
+        ) : (
           <CardContent>
-            <UserAdministration
-              key={`users-${usersRefreshVersion}`}
-              onChanged={() =>
-                setSummaryRefreshVersion(
-                  (current) => current + 1
-                )
-              }
-            />
-          </CardContent>
-        )}
-
-        {/* ROLES Y PERMISOS */}
-
-        {tab === 1 && (
-          <CardContent>
-            <RoleAdministration />
-          </CardContent>
-        )}
-
-        {/* UBICACIONES */}
-
-        {tab === 2 && (
-          <CardContent>
-            <LocationAdministration />
-          </CardContent>
-        )}
-
-        {/* CONFIGURACIÓN */}
-
-        {tab === 3 && (
-          <CardContent>
-            <ConfigurationAdministration />
+            <Alert severity="info">
+              No tienes secciones administrativas
+              disponibles.
+            </Alert>
           </CardContent>
         )}
       </Card>
 
       {/* FORMULARIO DE USUARIO */}
 
-      {userFormOpen && (
+      {userFormOpen && canCreateUsers && (
         <UserFormDialog
           onClose={() =>
             setUserFormOpen(false)

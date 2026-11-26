@@ -39,6 +39,7 @@ import {
 } from "@mui/icons-material";
 
 import { ApiError } from "../api/client";
+import { useAdministrationCapabilities } from "../hooks/useAdministrationCapabilities";
 
 import {
     getAdministrationRoles,
@@ -329,6 +330,7 @@ interface RoleDetailsDialogProps {
     roleId: string | null;
     onClose: () => void;
     catalog: AdministrationPermission[] | null;
+    canManageRoles: boolean;
     onSaved: () => void;
 }
 
@@ -336,6 +338,7 @@ function RoleDetailsDialog({
     roleId,
     onClose,
     catalog,
+    canManageRoles,
     onSaved,
 }: RoleDetailsDialogProps) {
     const [role, setRole] =
@@ -407,8 +410,15 @@ function RoleDetailsDialog({
     }, [role]);
 
     const assignable = new Set(catalog?.filter(p => p.assignable).map(p => p.key) ?? []);
-    const canManage = Boolean(role && !role.system_key && catalog && role.permissions.every(p => assignable.has(p)));
+    const canManage = Boolean(canManageRoles && role && !role.system_key && catalog && role.permissions.every(p => assignable.has(p)));
     const changed = Boolean(role && (selected.length !== role.permissions.length || selected.some(p => !role.permissions.includes(p))));
+
+    useEffect(() => {
+        if (!canManageRoles) {
+            setConfirmStatus(false);
+            setSelected(role?.permissions ?? []);
+        }
+    }, [canManageRoles, role]);
 
     async function savePermissions() {
         if (!role || !canManage || !changed || savingRef.current || selected.some(p => !assignable.has(p))) return;
@@ -986,7 +996,15 @@ function PermissionCatalogDialog({
 // COMPONENTE PRINCIPAL
 // =====================================================
 
-export default function RoleAdministration() {
+interface RoleAdministrationProps {
+    onChanged?: () => void;
+}
+
+export default function RoleAdministration({
+    onChanged,
+}: RoleAdministrationProps) {
+    const { canViewRoles, canManageRoles } = useAdministrationCapabilities();
+    const canWrite = canViewRoles && canManageRoles;
     const [roles, setRoles] =
         useState<AdministrationRole[]>([]);
 
@@ -1021,13 +1039,19 @@ export default function RoleAdministration() {
 
     useEffect(() => {
         const controller = new AbortController();
+        if (!canWrite) {
+            setCatalog(null);
+            setForm(null);
+            setCatalogOpen(false);
+            return () => controller.abort();
+        }
         getAdministrationPermissions(controller.signal).then(response => {
             if (!controller.signal.aborted) setCatalog(response.data);
         }).catch(() => {
             if (!controller.signal.aborted) setCatalog(null);
         });
         return () => controller.abort();
-    }, [refreshVersion]);
+    }, [refreshVersion, canWrite]);
 
     // ===================================================
     // BÚSQUEDA
@@ -1048,6 +1072,15 @@ export default function RoleAdministration() {
 
     useEffect(() => {
         const controller = new AbortController();
+
+        if (!canViewRoles) {
+            setRoles([]);
+            setTotal(0);
+            setLastPage(1);
+            setSelectedRoleId(null);
+            setLoading(false);
+            return () => controller.abort();
+        }
 
         async function loadRoles() {
             setLoading(true);
@@ -1124,6 +1157,7 @@ export default function RoleAdministration() {
         status,
         debouncedSearch,
         refreshVersion,
+        canViewRoles,
     ]);
 
     function refresh() {
@@ -1132,12 +1166,22 @@ export default function RoleAdministration() {
         );
     }
 
+    function handleRoleChanged() {
+        refresh();
+        onChanged?.();
+    }
+
     // ===================================================
     // INTERFAZ
     // ===================================================
 
+    if (!canViewRoles) {
+        return <Alert severity="warning">No tienes permisos para consultar roles.</Alert>;
+    }
+
     return (
         <Stack spacing={3}>
+            {!canWrite && <Alert severity="info">Consulta de solo lectura. No tienes permisos para administrar roles.</Alert>}
             {/* ENCABEZADO */}
 
             <Stack
@@ -1172,14 +1216,14 @@ export default function RoleAdministration() {
                 </Box>
 
                 <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
-                {catalog !== null && <Button variant="contained" startIcon={<Add />} onClick={() => setForm({})}>Nuevo rol</Button>}
-                <Button
-                    variant="outlined"
-                    startIcon={<Security />}
-                    onClick={() => setCatalogOpen(true)}
-                >
-                    Catálogo de permisos
-                </Button>
+                    {canWrite && catalog !== null && <Button variant="contained" startIcon={<Add />} onClick={() => setForm({})}>Nuevo rol</Button>}
+                    {canWrite && <Button
+                        variant="outlined"
+                        startIcon={<Security />}
+                        onClick={() => setCatalogOpen(true)}
+                    >
+                        Catálogo de permisos
+                    </Button>}
                 </Stack>
             </Stack>
 
@@ -1330,8 +1374,8 @@ export default function RoleAdministration() {
                                     <RoleCard
                                         role={role}
                                         onView={setSelectedRoleId}
-                                        canManage={catalog !== null && role.permissions.every(p => catalog.some(item => item.key === p && item.assignable))}
-                                        onEdit={(item) => setForm({ role: item })}
+                                        canManage={canWrite && catalog !== null && role.permissions.every(p => catalog.some(item => item.key === p && item.assignable))}
+                                        onEdit={(item) => { if (canWrite && !item.system_key && catalog !== null && item.permissions.every(p => catalog.some(entry => entry.key === p && entry.assignable))) setForm({ role: item }); }}
                                     />
                                 </Grid>
                             ))}
@@ -1364,20 +1408,25 @@ export default function RoleAdministration() {
             <RoleDetailsDialog
                 key={`role-details-${selectedRoleId ?? "closed"}`}
                 roleId={selectedRoleId}
-                catalog={catalog}
-                onSaved={refresh}
+                catalog={canWrite ? catalog : null}
+                canManageRoles={canWrite}
+                onSaved={handleRoleChanged}
                 onClose={() =>
                     setSelectedRoleId(null)
                 }
             />
 
-            {form && <RoleFormDialog role={form.role} onClose={() => setForm(null)} onSaved={(_, message) => { setForm(null); setFeedback(message); refresh(); }} />}
+            {canWrite && form && <RoleFormDialog role={form.role} onClose={() => setForm(null)} onSaved={(_, message) => {
+                setForm(null);
+                setFeedback(message);
+                handleRoleChanged();
+            }} />}
 
             {/* CATÁLOGO DE PERMISOS */}
 
             <PermissionCatalogDialog
                 key={`permission-catalog-${catalogOpen ? "open" : "closed"}`}
-                open={catalogOpen}
+                open={canWrite && catalogOpen}
                 onClose={() =>
                     setCatalogOpen(false)
                 }
