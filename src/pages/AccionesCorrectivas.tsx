@@ -1,944 +1,301 @@
-import { useMemo, useState, type ReactNode } from "react";
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
-  Stack,
-  TextField,
-  Typography,
-} from "@mui/material";
-
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, InputLabel, MenuItem, Select, TextField, Typography } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AssignmentTurnedInIcon from "@mui/icons-material/AssignmentTurnedIn";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import AutorenewIcon from "@mui/icons-material/Autorenew";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import { getIncident, type Incident } from "../services/incidents.service";
+import { getCorrectiveActions, getCorrectiveAction, recordCorrectiveActionUpdate, type CorrectiveAction, type CorrectiveActionDetail, type CorrectiveActionStatus, type CorrectiveActionPriority } from "../services/correctiveActions.service";
+import { apiRequest } from "../api/client";
+import type { ApiResponse } from "../types/inspections";
 
-interface AccionCorrectiva {
-  id: number;
-  folio: string;
-  accion: string;
-  origen: string;
-  area: string;
-  responsable: string;
-  prioridad: "Baja" | "Media" | "Alta" | "Crítica";
-  fechaLimite: string;
-  estado: "Pendiente" | "En proceso" | "En revisión" | "Cerrada" | "Vencida";
+const NAVY = "#16324F";
+const GREEN = "#0F9D8A";
+const STATUS: Record<CorrectiveActionStatus, string> = { pending: "Pendiente", in_progress: "En proceso", completed: "Completada", verified: "Verificada" };
+const PRIORITY: Record<CorrectiveActionPriority, string> = { low: "Baja", medium: "Media", high: "Alta", critical: "Crítica" };
+const NEXT: Partial<Record<CorrectiveActionStatus, Exclude<CorrectiveActionStatus, "pending">>> = { pending: "in_progress", in_progress: "completed", completed: "verified" };
+
+function overdue(action: CorrectiveAction): boolean {
+  return Boolean(action.due_date && action.due_date < new Date().toLocaleDateString("en-CA") && !["completed", "verified"].includes(action.status));
 }
-
-interface SummaryCardProps {
-  title: string;
-  value: number;
-  icon: ReactNode;
-  color: string;
-  description: string;
+function dateText(value?: string | null): string {
+  if (!value) return "Sin fecha";
+  const d = new Date(value.length === 10 ? `${value}T12:00:00` : value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
-
-const accionesIniciales: AccionCorrectiva[] = [
-  {
-    id: 1,
-    folio: "AC-2026-001",
-    accion: "Retirar material que obstruye el acceso al extintor",
-    origen: "INC-2026-001",
-    area: "Almacén",
-    responsable: "Juan Pérez",
-    prioridad: "Alta",
-    fechaLimite: "2026-10-08",
-    estado: "Pendiente",
-  },
-  {
-    id: 2,
-    folio: "AC-2026-002",
-    accion: "Reemplazar señalización de salida de emergencia",
-    origen: "INS-2026-014",
-    area: "Producción",
-    responsable: "María López",
-    prioridad: "Media",
-    fechaLimite: "2026-10-12",
-    estado: "En proceso",
-  },
-  {
-    id: 3,
-    folio: "AC-2026-003",
-    accion: "Colocar protección en maquinaria expuesta",
-    origen: "INC-2026-003",
-    area: "Línea 2",
-    responsable: "Carlos Ramírez",
-    prioridad: "Crítica",
-    fechaLimite: "2026-10-06",
-    estado: "En revisión",
-  },
-  {
-    id: 4,
-    folio: "AC-2026-004",
-    accion: "Actualizar equipo de protección personal del área",
-    origen: "INS-2026-017",
-    area: "Mantenimiento",
-    responsable: "Ana Torres",
-    prioridad: "Alta",
-    fechaLimite: "2026-10-15",
-    estado: "Pendiente",
-  },
-  {
-    id: 5,
-    folio: "AC-2026-005",
-    accion: "Corregir fuga de agua en área de servicios",
-    origen: "INC-2026-004",
-    area: "Servicios",
-    responsable: "Luis Hernández",
-    prioridad: "Media",
-    fechaLimite: "2026-10-03",
-    estado: "Cerrada",
-  },
-  {
-    id: 6,
-    folio: "AC-2026-006",
-    accion: "Retirar cableado expuesto en zona de trabajo",
-    origen: "INS-2026-019",
-    area: "Producción",
-    responsable: "Roberto Sánchez",
-    prioridad: "Alta",
-    fechaLimite: "2026-10-01",
-    estado: "Vencida",
-  },
-];
-
-function getEstadoColor(
-  estado: AccionCorrectiva["estado"]
-): "default" | "warning" | "info" | "success" | "error" {
-  switch (estado) {
-    case "Pendiente":
-      return "warning";
-    case "En proceso":
-      return "info";
-    case "En revisión":
-      return "warning";
-    case "Cerrada":
-      return "success";
-    case "Vencida":
-      return "error";
-    default:
-      return "default";
-  }
-}
-
-function getPrioridadColor(
-  prioridad: AccionCorrectiva["prioridad"]
-): "default" | "info" | "warning" | "error" {
-  switch (prioridad) {
-    case "Baja":
-      return "info";
-    case "Media":
-      return "warning";
-    case "Alta":
-      return "error";
-    case "Crítica":
-      return "error";
-    default:
-      return "default";
-  }
-}
-
-function SummaryCard({
-  title,
-  value,
-  icon,
-  color,
-  description,
-}: SummaryCardProps) {
-  return (
-    <Card sx={{ flex: 1, minWidth: 220 }}>
-      <CardContent>
-        <Stack
-          direction="row"
-          sx={{
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Box>
-            <Typography
-              sx={{
-                fontSize: 13,
-                color: "text.secondary",
-                mb: 0.5,
-              }}
-            >
-              {title}
-            </Typography>
-
-            <Typography
-              sx={{
-                fontSize: 30,
-                fontWeight: 700,
-                color: "#16324F",
-              }}
-            >
-              {value}
-            </Typography>
-
-            <Typography
-              sx={{
-                fontSize: 12,
-                color: "text.secondary",
-                mt: 0.5,
-              }}
-            >
-              {description}
-            </Typography>
-          </Box>
-
-          <Box
-            sx={{
-              width: 48,
-              height: 48,
-              borderRadius: 2,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: `${color}15`,
-              color,
-            }}
-          >
-            {icon}
-          </Box>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
+function errorText(error: unknown): string { return error instanceof Error ? error.message : "No fue posible completar la solicitud."; }
+function statusColor(status: CorrectiveActionStatus): "warning" | "info" | "success" { return status === "pending" ? "warning" : status === "in_progress" ? "info" : "success"; }
+function priorityColor(priority: CorrectiveActionPriority): "info" | "warning" | "error" { return priority === "low" ? "info" : priority === "medium" ? "warning" : "error"; }
+function SummaryCard({ title, value, icon, color, description }: { title: string; value: number; icon: ReactNode; color: string; description: string }) {
+  return <Card sx={{ flex: 1, minWidth: 180, borderRadius: 3, boxShadow: "none" }}><CardContent sx={{ p: 2.5 }}><Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><Box><Typography sx={{ fontSize: 13, color: "text.secondary" }}>{title}</Typography><Typography sx={{ fontSize: 29, fontWeight: 700, color: NAVY }}>{value}</Typography><Typography sx={{ fontSize: 12, color: "text.secondary" }}>{description}</Typography></Box><Box sx={{ width: 48, height: 48, borderRadius: "50%", display: "grid", placeItems: "center", color, bgcolor: `${color}18` }}>{icon}</Box></Box></CardContent></Card>;
 }
 
 export default function AccionesCorrectivas() {
-  const [busqueda, setBusqueda] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState("Todos");
-  const [filtroPrioridad, setFiltroPrioridad] = useState("Todas");
-  const [accionSeleccionada, setAccionSeleccionada] = useState<AccionCorrectiva | null>(null);
+  const [actions, setActions] = useState<CorrectiveAction[]>([]);
+  const [incidents, setIncidents] = useState<Record<string, Incident>>({});
+  const [areas, setAreas] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterPriority, setFilterPriority] = useState("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CorrectiveActionDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState("");
+  const [detailError, setDetailError] = useState("");
+  const [comment, setComment] = useState("");
+  const [confirm, setConfirm] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const acciones = accionesIniciales;
-
-  const generarPDF = () => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const fechaGeneracion = new Date().toLocaleString("es-MX", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(22, 50, 79);
-    doc.text("INSPECTA | Acciones correctivas", 14, 18);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(90, 105, 120);
-    doc.text(`Reporte generado: ${fechaGeneracion}`, 14, 25);
-    doc.text(`Total de acciones: ${acciones.length}`, 14, 30);
-
-    autoTable(doc, {
-      startY: 36,
-      head: [["Folio", "Acción correctiva", "Origen", "Responsable", "Prioridad", "Área", "Fecha límite", "Estado"]],
-      body: acciones.map((accion) => [
-        accion.folio,
-        accion.accion,
-        accion.origen,
-        accion.responsable,
-        accion.prioridad,
-        accion.area,
-        accion.fechaLimite,
-        accion.estado,
-      ]),
-      theme: "grid",
-      headStyles: { fillColor: [22, 50, 79], textColor: 255, fontStyle: "bold" },
-      styles: { font: "helvetica", fontSize: 8, cellPadding: 3, overflow: "linebreak" },
-      alternateRowStyles: { fillColor: [245, 248, 251] },
-      margin: { left: 14, right: 14 },
-    });
-
-    const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 40;
-    let y = finalY + 12;
-    const pageHeight = doc.internal.pageSize.getHeight();
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.setTextColor(22, 50, 79);
-    doc.text("Detalle de acciones", 14, y);
-    y += 7;
-
-    acciones.forEach((accion) => {
-      const lineas = [
-        `${accion.folio} — ${accion.accion}`,
-        `Origen: ${accion.origen} | Área: ${accion.area} | Responsable: ${accion.responsable}`,
-        `Prioridad: ${accion.prioridad} | Estado: ${accion.estado} | Fecha límite: ${accion.fechaLimite}`,
-        "Descripción del problema y solución aplicada: información detallada pendiente de registrar en el sistema.",
-        "Evidencias fotográficas: no hay evidencias vinculadas en los datos disponibles.",
-        `Observaciones y cierre: ${accion.estado === "Cerrada" ? "Acción marcada como cerrada; resultado y evidencia de cierre pendientes de documentar." : "Acción sin cierre documentado."}`,
-      ];
-      const bloque = lineas.map((linea) => doc.splitTextToSize(linea, 265));
-      const alto = bloque.reduce((total, linea) => total + linea.length * 4.5, 0) + 5;
-      if (y + alto > pageHeight - 15) {
-        doc.addPage();
-        y = 18;
+  async function loadActions() {
+    setLoading(true); setError("");
+    try {
+      const first = await getCorrectiveActions({ perPage: 100 });
+      const all = [...first.data];
+      for (let p = 2; p <= first.meta.last_page; p++) {
+        const next = await getCorrectiveActions({ page: p, perPage: 100 });
+        all.push(...next.data);
       }
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(22, 50, 79);
-      doc.text(bloque[0], 14, y);
-      y += bloque[0].length * 4.5;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(65, 80, 95);
-      bloque.slice(1).forEach((linea) => {
-        doc.text(linea, 14, y);
-        y += linea.length * 4.5;
-      });
-      y += 5;
-    });
+      setActions(all);
+      const ids = [...new Set(all.map(a => a.incident_id))];
+      const results = await Promise.allSettled(ids.map(id => getIncident(id)));
+      const incidentMap: Record<string, Incident> = {};
+      results.forEach((r, i) => { if (r.status === "fulfilled") incidentMap[ids[i]] = r.value.data; });
+      setIncidents(incidentMap);
+      const areaIds = [...new Set(Object.values(incidentMap).map(i => i.area_id))];
+      const areaResults = await Promise.allSettled(areaIds.map(id => apiRequest<ApiResponse<{ name: string }>>(`/areas/${encodeURIComponent(id)}`, { method: "GET" })));
+      const areaMap: Record<string, string> = {};
+      areaResults.forEach((r, i) => { if (r.status === "fulfilled") areaMap[areaIds[i]] = r.value.data.name; });
+      setAreas(areaMap);
+    } catch (e) { setError(errorText(e)); setActions([]); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { void loadActions(); }, []);
+  useEffect(() => {
+    let active = true;
+    setDetail(null); setDetailError(""); setSuccessMessage(""); setComment(""); setConfirm(false);
+    if (!selectedId) return () => { active = false; };
+    setDetailLoading(true);
+    getCorrectiveAction(selectedId).then(r => { if (active) setDetail(r.data); }).catch(e => { if (active) setDetailError(errorText(e)); }).finally(() => { if (active) setDetailLoading(false); });
+    return () => { active = false; };
+  }, [selectedId]);
 
-    const paginas = doc.getNumberOfPages();
-    for (let pagina = 1; pagina <= paginas; pagina += 1) {
-      doc.setPage(pagina);
-      doc.setFontSize(8);
-      doc.setTextColor(120, 130, 140);
-      doc.text(`Inspecta · Página ${pagina} de ${paginas}`, 14, doc.internal.pageSize.getHeight() - 7);
-    }
+  const summary = useMemo(() => ({ total: actions.length, pending: actions.filter(a => a.status === "pending").length, progress: actions.filter(a => a.status === "in_progress").length, completed: actions.filter(a => a.status === "completed").length, verified: actions.filter(a => a.status === "verified").length, overdue: actions.filter(overdue).length }), [actions]);
+  const filtered = useMemo(() => actions.filter(a => {
+    const incident = incidents[a.incident_id];
+    const area = incident ? areas[incident.area_id] ?? "" : "";
+    const term = search.trim().toLowerCase();
+    const matches = !term || [a.id, a.description, a.incident_id, incident?.title ?? "", area, a.assigned_to].some(s => s.toLowerCase().includes(term));
+    return matches && (filterStatus === "all" || (filterStatus === "overdue" ? overdue(a) : a.status === filterStatus)) && (filterPriority === "all" || a.priority === filterPriority);
+  }), [actions, incidents, areas, search, filterStatus, filterPriority]);
 
-    doc.save(`Inspecta_Acciones_Correctivas_${new Date().toISOString().slice(0, 10)}.pdf`);
-  };
+  async function changeStatus() {
+    if (!detail) return;
 
-  const resumen = useMemo(() => {
-    return {
-      total: acciones.length,
-      pendientes: acciones.filter(
-        (accion) => accion.estado === "Pendiente"
-      ).length,
-      proceso: acciones.filter(
-        (accion) => accion.estado === "En proceso"
-      ).length,
-      revision: acciones.filter(
-        (accion) => accion.estado === "En revisión"
-      ).length,
-      cerradas: acciones.filter(
-        (accion) => accion.estado === "Cerrada"
-      ).length,
-      vencidas: acciones.filter(
-        (accion) => accion.estado === "Vencida"
-      ).length,
-    };
-  }, [acciones]);
+    const next = NEXT[detail.status];
 
-  const accionesFiltradas = useMemo(() => {
-    const texto = busqueda.toLowerCase().trim();
+    if (!next) return;
 
-    return acciones.filter((accion) => {
-      const coincideBusqueda =
-        texto === "" ||
-        accion.folio.toLowerCase().includes(texto) ||
-        accion.accion.toLowerCase().includes(texto) ||
-        accion.area.toLowerCase().includes(texto) ||
-        accion.responsable.toLowerCase().includes(texto);
+    setSaving(true);
+    setDetailError("");
+    setSuccessMessage("");
 
-      const coincideEstado =
-        filtroEstado === "Todos" || accion.estado === filtroEstado;
-
-      const coincidePrioridad =
-        filtroPrioridad === "Todas" ||
-        accion.prioridad === filtroPrioridad;
-
-      return (
-        coincideBusqueda &&
-        coincideEstado &&
-        coincidePrioridad
+    try {
+      await recordCorrectiveActionUpdate(
+        detail.id,
+        next,
+        comment.trim() || null
       );
-    });
-  }, [acciones, busqueda, filtroEstado, filtroPrioridad]);
 
-  return (
-    <Box sx={{ width: "100%" }}>
-      {/* Encabezado */}
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={2}
-        sx={{
-          justifyContent: "space-between",
-          alignItems: {
-            xs: "stretch",
-            sm: "center",
-          },
-          mb: 3,
-        }}
-      >
-        <Box>
-          <Typography
-            variant="h4"
-            sx={{
-              fontWeight: 700,
-              color: "#16324F",
-            }}
-          >
-            Acciones correctivas
-          </Typography>
+      const refreshed = await getCorrectiveAction(detail.id);
 
-          <Typography
-            sx={{
-              color: "text.secondary",
-              fontSize: 14,
-              mt: 0.5,
-            }}
-          >
-            Seguimiento y control de las acciones derivadas de inspecciones e incidencias.
-          </Typography>
-        </Box>
+      setDetail(refreshed.data);
 
-        <Button
-          variant="contained"
-          startIcon={<PictureAsPdfIcon />}
-          onClick={generarPDF}
-          sx={{
-            backgroundColor: "#16324F",
-            whiteSpace: "nowrap",
-            "&:hover": { backgroundColor: "#0F263D" },
-          }}
-        >
-          Generar PDF
-        </Button>
-      </Stack>
+      setActions(old =>
+        old.map(a =>
+          a.id === detail.id ? refreshed.data : a
+        )
+      );
 
-      {/* Tarjetas de resumen */}
-      <Stack
-        direction={{
-          xs: "column",
-          sm: "row",
-        }}
-        spacing={2}
-        sx={{ mb: 3 }}
-      >
-        <SummaryCard
-          title="Total"
-          value={resumen.total}
-          description="Acciones registradas"
-          color="#16324F"
-          icon={<AssignmentTurnedInIcon />}
-        />
+      setComment("");
+      setConfirm(false);
 
-        <SummaryCard
-          title="Pendientes"
-          value={resumen.pendientes}
-          description="Sin iniciar"
-          color="#F2A900"
-          icon={<PendingActionsIcon />}
-        />
+      setSuccessMessage(
+        `Estado actualizado a ${STATUS[next]}.`
+      );
 
-        <SummaryCard
-          title="En proceso"
-          value={resumen.proceso}
-          description="Actualmente trabajando"
-          color="#2673C9"
-          icon={<AutorenewIcon />}
-        />
+    } catch (e) {
+      const message = errorText(e);
 
-        <SummaryCard
-          title="Cerradas"
-          value={resumen.cerradas}
-          description="Acciones completadas"
-          color="#16803C"
-          icon={<CheckCircleIcon />}
-        />
+      const forbidden =
+        /403|forbidden|no tienes permiso|no autorizado/i.test(message);
 
-        <SummaryCard
-          title="Vencidas"
-          value={resumen.vencidas}
-          description="Requieren atención"
-          color="#B42318"
-          icon={<WarningAmberIcon />}
-        />
-      </Stack>
+      if (forbidden && next === "verified") {
+        setDetailError(
+          "No tienes autorización para verificar esta acción correctiva. " +
+          "La verificación debe realizarla un usuario autorizado que no sea " +
+          "el responsable asignado ni quien registró su finalización."
+        );
+      } else if (forbidden) {
+        setDetailError(
+          "No tienes los permisos necesarios para registrar este avance."
+        );
+      } else {
+        setDetailError(message);
+      }
 
-      {/* Filtros */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Stack
-            direction={{
-              xs: "column",
-              md: "row",
-            }}
-            spacing={2}
-          >
-            <TextField
-              fullWidth
-              placeholder="Buscar por folio, acción, área o responsable..."
-              value={busqueda}
-              onChange={(event) => setBusqueda(event.target.value)}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <SearchIcon
-                      sx={{
-                        color: "text.secondary",
-                        mr: 1,
-                      }}
-                    />
-                  ),
-                },
-              }}
-            />
+      console.error("Error al registrar avance:", e);
 
-            <FormControl
-              sx={{
-                minWidth: {
-                  xs: "100%",
-                  md: 190,
-                },
-              }}
-            >
-              <InputLabel>Estado</InputLabel>
+    } finally {
+      setSaving(false);
+    }
+  }
 
-              <Select
-                value={filtroEstado}
-                label="Estado"
-                onChange={(event) =>
-                  setFiltroEstado(event.target.value)
-                }
-              >
-                <MenuItem value="Todos">Todos</MenuItem>
-                <MenuItem value="Pendiente">Pendiente</MenuItem>
-                <MenuItem value="En proceso">En proceso</MenuItem>
-                <MenuItem value="En revisión">En revisión</MenuItem>
-                <MenuItem value="Cerrada">Cerrada</MenuItem>
-                <MenuItem value="Vencida">Vencida</MenuItem>
-              </Select>
-            </FormControl>
+  async function generatePDF() {
+    setExporting(true);
+    try {
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(22, 50, 79);
+      doc.text("INSPECTA | Reporte de acciones correctivas", 14, 18);
+      doc.setFontSize(9); doc.text(`Generado: ${new Date().toLocaleString("es-MX")} | Registros: ${filtered.length}`, 14, 26);
+      autoTable(doc, {
+        startY: 34,
+        head: [["Acción (ID)", "Descripción", "Incidencia", "Prioridad", "Responsable (ID)", "Área", "Fecha límite", "Estado"]],
+        body: filtered.map(a => { const inc = incidents[a.incident_id]; return [a.id, a.description, inc?.title ?? a.incident_id, PRIORITY[a.priority], a.assignee_name || "Nombre no disponible", inc ? areas[inc.area_id] ?? inc.area_id : "No disponible", dateText(a.due_date), `${STATUS[a.status]}${overdue(a) ? " (Vencida)" : ""}`]; }),
+        theme: "grid", headStyles: { fillColor: [22, 50, 79] }, styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" }, margin: { left: 14, right: 14 },
+      });
+      doc.save(`INSPECTA_Acciones_Correctivas_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e) { setError(errorText(e)); }
+    finally { setExporting(false); }
+  }
 
-            <FormControl
-              sx={{
-                minWidth: {
-                  xs: "100%",
-                  md: 190,
-                },
-              }}
-            >
-              <InputLabel>Prioridad</InputLabel>
+  const selectedIncident = detail ? incidents[detail.incident_id] : undefined;
+  const selectedArea = selectedIncident ? areas[selectedIncident.area_id] ?? selectedIncident.area_id : "No disponible";
+  const next = detail ? NEXT[detail.status] : undefined;
 
-              <Select
-                value={filtroPrioridad}
-                label="Prioridad"
-                onChange={(event) =>
-                  setFiltroPrioridad(event.target.value)
-                }
-              >
-                <MenuItem value="Todas">Todas</MenuItem>
-                <MenuItem value="Baja">Baja</MenuItem>
-                <MenuItem value="Media">Media</MenuItem>
-                <MenuItem value="Alta">Alta</MenuItem>
-                <MenuItem value="Crítica">Crítica</MenuItem>
-              </Select>
-            </FormControl>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {/* Tabla */}
-      <Card>
-        <CardContent sx={{ p: 0 }}>
-          <Box
-            sx={{
-              overflowX: "auto",
-              width: "100%",
-            }}
-          >
-            <Box sx={{ minWidth: 1050 }}>
-              {/* Encabezado */}
-              <Box
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "130px minmax(280px, 1fr) 130px 150px 110px 120px 140px 90px 110px",
-                  gap: 2,
-                  alignItems: "center",
-                  px: 3,
-                  py: 2,
-                  backgroundColor: "#F4F7FA",
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  FOLIO
-                </Typography>
-
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  ACCIÓN CORRECTIVA
-                </Typography>
-
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  ORIGEN
-                </Typography>
-
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  RESPONSABLE
-                </Typography>
-
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  PRIORIDAD
-                </Typography>
-
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  ÁREA
-                </Typography>
-
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  FECHA LÍMITE
-                </Typography>
-
-                <Typography
-                  sx={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: "text.secondary",
-                  }}
-                >
-                  ESTADO
-                </Typography>
-                <Typography sx={{ fontSize: 12, fontWeight: 700, color: "text.secondary" }}>
-                  DETALLE
-                </Typography>
-              </Box>
-
-              <Divider />
-
-              {/* Registros */}
-              {accionesFiltradas.map((accion) => (
-                <Box key={accion.id}>
-                  <Box
-                    sx={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "130px minmax(280px, 1fr) 130px 150px 110px 120px 140px 90px 110px",
-                      gap: 2,
-                      alignItems: "center",
-                      px: 3,
-                      py: 2,
-                    }}
-                  >
-                    {/* Folio */}
-                    <Typography
-                      sx={{
-                        fontSize: 13,
-                        fontWeight: 700,
-                        color: "#16324F",
-                      }}
-                    >
-                      {accion.folio}
-                    </Typography>
-
-                    {/* Acción */}
-                    <Typography
-                      sx={{
-                        fontSize: 13,
-                        color: "#273746",
-                      }}
-                    >
-                      {accion.accion}
-                    </Typography>
-
-                    {/* Origen */}
-                    <Typography
-                      sx={{
-                        fontSize: 12,
-                        color: "text.secondary",
-                      }}
-                    >
-                      {accion.origen}
-                    </Typography>
-
-                    {/* Responsable */}
-                    <Typography
-                      sx={{
-                        fontSize: 13,
-                      }}
-                    >
-                      {accion.responsable}
-                    </Typography>
-
-                    {/* Prioridad */}
-                    <Chip
-                      label={accion.prioridad}
-                      size="small"
-                      color={getPrioridadColor(
-                        accion.prioridad
-                      )}
-                      variant="outlined"
-                    />
-
-                    {/* Área */}
-                    <Typography
-                      sx={{
-                        fontSize: 13,
-                      }}
-                    >
-                      {accion.area}
-                    </Typography>
-
-                    {/* Fecha */}
-                    <Typography
-                      sx={{
-                        fontSize: 12,
-                        color: "text.secondary",
-                      }}
-                    >
-                      {accion.fechaLimite}
-                    </Typography>
-
-                    {/* Estado */}
-                    <Chip
-                      label={accion.estado}
-                      size="small"
-                      color={getEstadoColor(accion.estado)}
-                    />
-                    <Button
-                      size="small"
-                      startIcon={<VisibilityIcon />}
-                      onClick={() => setAccionSeleccionada(accion)}
-                      sx={{ color: "#16324F", whiteSpace: "nowrap" }}
-                    >
-                      Ver detalle
-                    </Button>
-                  </Box>
-
-                  <Divider />
-                </Box>
-              ))}
-
-              {/* Sin resultados */}
-              {accionesFiltradas.length === 0 && (
-                <Box
-                  sx={{
-                    py: 6,
-                    textAlign: "center",
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      color: "text.secondary",
-                      fontSize: 14,
-                    }}
-                  >
-                    No se encontraron acciones correctivas.
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-          </Box>
-
-          {/* Pie */}
-          <Box
-            sx={{
-              px: 3,
-              py: 2,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <Typography
-              sx={{
-                color: "text.secondary",
-                fontSize: 12,
-              }}
-            >
-              Mostrando {accionesFiltradas.length} de{" "}
-              {acciones.length} acciones
-            </Typography>
-
-
-          </Box>
-        </CardContent>
-      </Card>
-
-      <Dialog
-  open={Boolean(accionSeleccionada)}
-  onClose={() => setAccionSeleccionada(null)}
-  fullWidth
-  maxWidth="md"
-  slotProps={{
-    paper: {
-      sx: { borderRadius: 3 },
-    },
-  }}
->
-        {accionSeleccionada && (
-          <>
-            <DialogTitle sx={{ borderBottom: "1px solid #E1E8EF", pb: 2 }}>
-             <Stack
-  direction="row"
-  sx={{
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    gap: 2,
-  }}
->
-                <Box>
-                  <Typography sx={{ color: "#0F9D8A", fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
-                    DETALLE DE ACCIÓN CORRECTIVA
-                  </Typography>
-                  <Typography variant="h5" sx={{ color: "#16324F", fontWeight: 700 }}>
-                    {accionSeleccionada.folio}
-                  </Typography>
-                  <Typography sx={{ color: "text.secondary", mt: 0.5 }}>
-                    {accionSeleccionada.accion}
-                  </Typography>
-                </Box>
-                <Chip label={accionSeleccionada.estado} color={getEstadoColor(accionSeleccionada.estado)} />
-              </Stack>
-            </DialogTitle>
-
-            <DialogContent dividers>
-              <Stack spacing={3} sx={{ py: 1 }}>
-                <Box>
-                  <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1.5 }}>
-                    Información general
-                  </Typography>
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
-                    {[
-                      ["Folio", accionSeleccionada.folio],
-                      ["Área", accionSeleccionada.area],
-                      ["Origen relacionado", accionSeleccionada.origen],
-                      ["Responsable", accionSeleccionada.responsable],
-                      ["Prioridad", accionSeleccionada.prioridad],
-                      ["Fecha límite", accionSeleccionada.fechaLimite],
-                      ["Estado actual", accionSeleccionada.estado],
-                      ["Fecha de registro", "Por definir"],
-                    ].map(([label, value]) => (
-                      <Box key={label} sx={{ p: 1.5, bgcolor: "#F5F8FB", borderRadius: 2 }}>
-                        <Typography sx={{ color: "text.secondary", fontSize: 12 }}>{label}</Typography>
-                        <Typography sx={{ color: "#16324F", fontWeight: 600 }}>{value}</Typography>
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-
-                <Divider />
-
-                <Box>
-                  <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
-                    Descripción y seguimiento
-                  </Typography>
-                  <Typography sx={{ fontSize: 14, lineHeight: 1.7 }}>
-                    Acción requerida: {accionSeleccionada.accion}. Se debe atender en el área de {accionSeleccionada.area} y documentar la solución aplicada antes de cerrar el registro.
-                  </Typography>
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5, mt: 2 }}>
-                    <Box sx={{ border: "1px solid #DCE5EF", borderRadius: 2, p: 1.5 }}>
-                      <Typography sx={{ color: "text.secondary", fontSize: 12 }}>Acción a realizar</Typography>
-                      <Typography sx={{ fontSize: 13 }}>{accionSeleccionada.accion}</Typography>
-                    </Box>
-                    <Box sx={{ border: "1px solid #DCE5EF", borderRadius: 2, p: 1.5 }}>
-                      <Typography sx={{ color: "text.secondary", fontSize: 12 }}>Responsable de seguimiento</Typography>
-                      <Typography sx={{ fontSize: 13 }}>{accionSeleccionada.responsable}</Typography>
-                    </Box>
-                  </Box>
-                </Box>
-
-                <Divider />
-
-                <Box>
-                  <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
-                    Evidencias fotográficas
-                  </Typography>
-                  <Box sx={{ p: 2, bgcolor: "#F8FAFC", border: "1px dashed #C8D5E3", borderRadius: 2 }}>
-                    <Typography sx={{ color: "text.secondary", fontSize: 13 }}>
-                      No hay fotografías asociadas a esta acción correctiva. Este apartado está preparado para mostrar evidencias del antes y después cuando se vinculen al registro.
-                    </Typography>
-                  </Box>
-                </Box>
-
-                <Divider />
-
-                <Box>
-                  <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
-                    Cierre de la acción
-                  </Typography>
-                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
-                    <Box sx={{ p: 1.5, bgcolor: "#F5F8FB", borderRadius: 2 }}>
-                      <Typography sx={{ color: "text.secondary", fontSize: 12 }}>Resultado de la corrección</Typography>
-                      <Typography sx={{ fontSize: 13 }}>Pendiente de documentar</Typography>
-                    </Box>
-                    <Box sx={{ p: 1.5, bgcolor: "#F5F8FB", borderRadius: 2 }}>
-                      <Typography sx={{ color: "text.secondary", fontSize: 12 }}>Fecha de cierre</Typography>
-                      <Typography sx={{ fontSize: 13 }}>
-                        {accionSeleccionada.estado === "Cerrada" ? "Registrada en el sistema" : "Sin cerrar"}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Typography sx={{ color: "text.secondary", fontSize: 12, mt: 1.5 }}>
-                    Observaciones: no hay observaciones adicionales registradas.
-                  </Typography>
-                </Box>
-              </Stack>
-            </DialogContent>
-
-            <DialogActions sx={{ p: 2 }}>
-              <Button variant="contained" onClick={() => setAccionSeleccionada(null)} sx={{ bgcolor: "#16324F" }}>
-                Cerrar detalle
-              </Button>
-            </DialogActions>
-          </>
-        )}
-      </Dialog>
+  return <Box sx={{ width: "100%" }}>
+    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, flexDirection: { xs: "column", sm: "row" }, gap: 2, mb: 4 }}>
+      <Box><Typography sx={{ color: GREEN, fontWeight: 800, fontSize: 12, letterSpacing: 1 }}>GESTIÓN OPERATIVA</Typography><Typography variant="h4" sx={{ color: NAVY, fontWeight: 800, mt: 0.5 }}>Acciones correctivas</Typography><Typography sx={{ color: "text.secondary", fontSize: 14, mt: 0.5 }}>Seguimiento y control de las medidas derivadas de incidencias.</Typography></Box>
+      <Button variant="contained" startIcon={<PictureAsPdfIcon />} disabled={loading || exporting || !filtered.length} onClick={() => void generatePDF()} sx={{ bgcolor: GREEN, "&:hover": { bgcolor: "#0B8171" }, whiteSpace: "nowrap", textTransform: "none", fontWeight: 700, py: 1.5, px: 2.5 }}>{exporting ? "Generando..." : "Generar PDF"}</Button>
     </Box>
-  );
+    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 2, mb: 3 }}>
+      <SummaryCard title="Total" value={summary.total} icon={<AssignmentTurnedInIcon />} color={NAVY} description="Acciones accesibles" />
+      <SummaryCard title="Pendientes" value={summary.pending} icon={<PendingActionsIcon />} color="#C28B00" description="Sin iniciar" />
+      <SummaryCard title="En proceso" value={summary.progress} icon={<AutorenewIcon />} color="#2673C9" description="En atención" />
+      <SummaryCard title="Completadas" value={summary.completed} icon={<CheckCircleIcon />} color="#16803C" description="Por verificar" />
+      <SummaryCard title="Vencidas" value={summary.overdue} icon={<WarningAmberIcon />} color="#B42318" description="Fuera de plazo" />
+    </Box>
+    {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+    <Card sx={{ borderRadius: 3, boxShadow: "none", mb: 2 }}><CardContent sx={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+      <TextField size="small" fullWidth sx={{ flex: "1 1 350px" }} placeholder="Buscar por ID, acción, incidencia, área o responsable..." value={search} onChange={e => setSearch(e.target.value)} slotProps={{ input: { startAdornment: <SearchIcon sx={{ mr: 1, color: "text.secondary" }} /> } }} />
+      <FormControl size="small" sx={{ minWidth: 190 }}><InputLabel>Estado</InputLabel><Select label="Estado" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}><MenuItem value="all">Todos los estados</MenuItem>{Object.entries(STATUS).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}<MenuItem value="overdue">Vencidas</MenuItem></Select></FormControl>
+      <FormControl size="small" sx={{ minWidth: 170 }}><InputLabel>Prioridad</InputLabel><Select label="Prioridad" value={filterPriority} onChange={e => setFilterPriority(e.target.value)}><MenuItem value="all">Todas</MenuItem>{Object.entries(PRIORITY).map(([key, label]) => <MenuItem key={key} value={key}>{label}</MenuItem>)}</Select></FormControl>
+    </CardContent></Card>
+    <Card sx={{ borderRadius: 3, boxShadow: "none" }}><Box sx={{ overflowX: "auto" }}><Box sx={{ minWidth: 1100 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "190px minmax(230px, 1fr) 170px 150px 100px 130px 110px 100px", gap: 2, p: 2, bgcolor: "#F4F7FA" }}>{["ID", "Acción correctiva", "Incidencia", "Responsable", "Prioridad", "Fecha límite", "Estado", "Detalle"].map(h => <Typography key={h} sx={{ fontWeight: 700, fontSize: 12, color: NAVY }}>{h}</Typography>)}</Box>
+      <Divider />
+      {loading ? <Box sx={{ p: 5, textAlign: "center" }}><CircularProgress /></Box> : filtered.length === 0 ? <Typography sx={{ p: 4, textAlign: "center", color: "text.secondary" }}>No se encontraron acciones correctivas.</Typography> : filtered.map(a => <Box key={a.id}><Box sx={{ display: "grid", gridTemplateColumns: "190px minmax(230px, 1fr) 170px 150px 100px 130px 110px 100px", gap: 2, alignItems: "center", p: 2 }}>
+        <Typography sx={{ fontSize: 12, fontWeight: 700, color: NAVY, overflowWrap: "anywhere" }}>{a.id}</Typography>
+        <Typography sx={{ fontSize: 13 }}>{a.description}</Typography>
+        <Typography sx={{ fontSize: 12 }}>{incidents[a.incident_id]?.title ?? a.incident_id}</Typography>
+        <Typography sx={{ fontSize: 12, overflowWrap: "anywhere" }}>{(a.assignee_name || "Nombre no disponible")}</Typography>
+        <Chip size="small" label={PRIORITY[a.priority]} color={priorityColor(a.priority)} variant="outlined" />
+        <Typography sx={{ fontSize: 12, color: overdue(a) ? "error.main" : "text.primary" }}>{dateText(a.due_date)}{overdue(a) ? " · Vencida" : ""}</Typography>
+        <Chip size="small" label={STATUS[a.status]} color={statusColor(a.status)} />
+        <Button size="small" startIcon={<VisibilityIcon />} sx={{ textTransform: "none", color: NAVY }} onClick={() => setSelectedId(a.id)}>Ver</Button>
+      </Box><Divider /></Box>)}
+    </Box></Box><Box sx={{ p: 2, color: "text.secondary", fontSize: 12 }}>Mostrando {filtered.length} de {actions.length} acciones · Verificadas: {summary.verified}</Box></Card>
+    <Dialog
+  open={confirm}
+  onClose={() => {
+    if (!saving) {
+      setConfirm(false);
+      setDetailError("");
+    }
+  }}
+  maxWidth="xs"
+  fullWidth
+>
+  <DialogTitle>
+    Confirmar cambio de estado
+  </DialogTitle>
+
+  <DialogContent>
+    <Typography>
+      ¿Deseas cambiar esta acción a{" "}
+      {next ? STATUS[next] : "el siguiente estado"}?
+    </Typography>
+
+    <Typography
+      sx={{
+        mt: 1,
+        color: "text.secondary",
+        fontSize: 13
+      }}
+    >
+      El avance quedará registrado en el historial de la acción.
+    </Typography>
+
+    {next === "verified" && (
+      <Alert severity="info" sx={{ mt: 2 }}>
+        La verificación debe realizarla un usuario autorizado
+        e independiente del responsable y de quien completó
+        la acción.
+      </Alert>
+    )}
+
+    {detailError && (
+      <Alert severity="error" sx={{ mt: 2 }}>
+        {detailError}
+      </Alert>
+    )}
+  </DialogContent>
+
+  <DialogActions>
+    <Button
+      disabled={saving}
+      onClick={() => {
+        setConfirm(false);
+        setDetailError("");
+      }}
+    >
+      {detailError ? "Cerrar" : "Cancelar"}
+    </Button>
+
+    <Button
+      variant="contained"
+      disabled={saving}
+      onClick={() => void changeStatus()}
+      sx={{ bgcolor: GREEN }}
+    >
+      {saving ? "Guardando..." : "Confirmar cambio"}
+    </Button>
+  </DialogActions>
+</Dialog>
+    <Dialog open={Boolean(selectedId)} onClose={() => { if (!saving) setSelectedId(null); }} fullWidth maxWidth="md" slotProps={{ paper: { sx: { borderRadius: 3 } } }}>
+      <DialogTitle sx={{ borderBottom: "1px solid #E1E8EF" }}><Typography sx={{ fontSize: 11, fontWeight: 700, color: GREEN, letterSpacing: 1 }}>DETALLE DE ACCIÓN CORRECTIVA</Typography><Typography variant="h6" sx={{ fontWeight: 700, color: NAVY, overflowWrap: "anywhere" }}>{selectedId}</Typography>{detail && <Chip size="small" label={STATUS[detail.status]} color={statusColor(detail.status)} sx={{ mt: 1 }} />}</DialogTitle>
+      <DialogContent dividers>{detailLoading ? <Box sx={{ p: 5, textAlign: "center" }}><CircularProgress /></Box> : detail ? <Box sx={{ py: 1 }}>
+        {detailError && <Alert severity="error" sx={{ mb: 2 }}>{detailError}</Alert>}
+        {successMessage && <Alert severity="success" sx={{ mb: 2 }}>{successMessage}</Alert>}
+        <Typography sx={{ fontWeight: 700, color: NAVY, mb: 2 }}>Información general</Typography>
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1.5 }}>{[
+          ["Incidencia relacionada", selectedIncident?.title ?? detail.incident_id], ["Área", selectedArea], ["Responsable", detail.assignee_name || "Nombre no disponible"], ["Prioridad", PRIORITY[detail.priority]], ["Fecha límite", dateText(detail.due_date)], ["Estado", STATUS[detail.status]], ["Fecha de registro", dateText(detail.created_at)], ["Fecha de finalización", dateText(detail.completed_at)]
+        ].map(([label, value]) => <Box key={label} sx={{ p: 1.5, borderRadius: 2, bgcolor: "#F5F8FB" }}><Typography sx={{ fontSize: 12, color: "text.secondary" }}>{label}</Typography><Typography sx={{ fontSize: 14, fontWeight: 600, color: NAVY, overflowWrap: "anywhere" }}>{value}</Typography></Box>)}</Box>
+        <Divider sx={{ my: 3 }} /><Typography sx={{ fontWeight: 700, color: NAVY, mb: 1 }}>Descripción de la acción</Typography><Typography sx={{ whiteSpace: "pre-wrap" }}>{detail.description}</Typography>
+        <Typography sx={{ fontWeight: 700, color: NAVY, mt: 2, mb: 1 }}>Observaciones</Typography><Typography sx={{ whiteSpace: "pre-wrap" }}>{detail.observations || "Sin observaciones registradas."}</Typography>
+        <Divider sx={{ my: 3 }} /><Typography sx={{ fontWeight: 700, color: NAVY, mb: 2 }}>Historial de seguimiento ({detail.updates?.length ?? 0})</Typography>
+        {!detail.updates?.length ? <Typography color="text.secondary">Todavía no hay avances registrados.</Typography> : detail.updates.map(u => <Box key={u.id} sx={{ border: "1px solid #E1E8EF", borderRadius: 2, p: 2, mb: 1.5 }}><Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}><Chip size="small" label={STATUS[u.status]} color={statusColor(u.status)} /><Typography sx={{ fontSize: 12, color: "text.secondary" }}>{dateText(u.created_at)}</Typography></Box><Typography sx={{ mt: 1, fontSize: 13 }}>{u.comment || "Sin comentario."}</Typography><Typography sx={{ fontSize: 11, color: "text.secondary", mt: 1 }}>Registrado por: {u.user_name || "Nombre no disponible"}</Typography></Box>)}
+        {next && <Box sx={{ mt: 3, p: 2, bgcolor: "#F5F8FB", borderRadius: 2 }}><Typography sx={{ fontWeight: 700, color: NAVY, mb: 1 }}>Registrar avance</Typography><Typography sx={{ fontSize: 13, color: "text.secondary", mb: 2 }}>Siguiente estado: {STATUS[next]}. La API comprobará tus permisos y, para verificar, que seas independiente de quien completó la acción.</Typography><TextField label="Comentario del avance (opcional)" multiline minRows={2} fullWidth value={comment} onChange={e => setComment(e.target.value)} /><Button sx={{ mt: 2, bgcolor: GREEN, textTransform: "none" }} variant="contained" onClick={() => setConfirm(true)} disabled={saving}>Cambiar a {STATUS[next]}</Button></Box>}
+      </Box> : <Alert severity="error">{detailError || "No se pudo cargar el detalle."}</Alert>}</DialogContent>
+      <DialogActions sx={{ p: 2 }}><Button variant="contained" sx={{ bgcolor: NAVY }} onClick={() => setSelectedId(null)} disabled={saving}>Cerrar detalle</Button></DialogActions>
+    </Dialog>
+  </Box>;
 }

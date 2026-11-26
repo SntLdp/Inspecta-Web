@@ -38,7 +38,7 @@ export default function Login() {
     event.preventDefault();
     setLoginError("");
 
-    
+
     setCargando(true);
 
     try {
@@ -59,7 +59,7 @@ export default function Login() {
       }
 
       await login(correo.trim(), password);
-      navigate("/dashboard", { replace: true });
+      navigate("/seleccionar-organizacion", { replace: true });
     } catch (error: unknown) {
       setLoginError(
         error instanceof Error

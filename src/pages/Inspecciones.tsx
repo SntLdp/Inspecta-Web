@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import {
   Box,
@@ -36,9 +37,13 @@ import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import Alert from "@mui/material/Alert";
 
-import { isApiConfigured } from "../api/client";
-import { getInspections } from "../services/inspections.service";
-import type { InspectionBase } from "../types/inspections";
+import {
+  isApiConfigured,
+  getOrganizationId,
+} from "../api/client";
+import { getInspections, getInspection, getInspectionChecklist, getInspectionAnswers } from "../services/inspections.service";
+import { getAllVisibleIncidents, type Incident } from "../services/incidents.service";
+import type { InspectionBase, InspectionDetail, InspectionChecklist, InspectionAnswer } from "../types/inspections";
 type Estado =
   | "Completada"
   | "En proceso"
@@ -50,72 +55,20 @@ type Inspeccion = {
   id: string;
   area: string;
   tipo: string;
+  planta: string;
+  linea: string;
+  version: string | null;
+  respondidas: number;
+  obligatorias: number;
   responsable: string;
   fecha: string;
   estado: Estado;
   avance: number | null;
 };
 
-const inspeccionesIniciales: Inspeccion[] = [
-  {
-    id: "INS-001",
-    area: "Almacén",
-    tipo: "Seguridad",
-    responsable: "Juan Pérez",
-    fecha: "29 Sep 2026",
-    estado: "En proceso",
-    avance: 75,
-  },
-  {
-    id: "INS-002",
-    area: "Línea 3",
-    tipo: "Seguridad",
-    responsable: "Ana López",
-    fecha: "30 Sep 2026",
-    estado: "Pendiente",
-    avance: 0,
-  },
-  {
-    id: "INS-003",
-    area: "Producción",
-    tipo: "Higiene",
-    responsable: "Carlos Ramírez",
-    fecha: "28 Sep 2026",
-    estado: "Completada",
-    avance: 100,
-  },
-  {
-    id: "INS-004",
-    area: "Línea 2",
-    tipo: "Seguridad",
-    responsable: "María González",
-    fecha: "27 Sep 2026",
-    estado: "En proceso",
-    avance: 45,
-  },
-  {
-    id: "INS-005",
-    area: "Mantenimiento",
-    tipo: "Higiene",
-    responsable: "Luis Hernández",
-    fecha: "26 Sep 2026",
-    estado: "Completada",
-    avance: 100,
-  },
-  {
-    id: "INS-006",
-    area: "Almacén",
-    tipo: "Seguridad",
-    responsable: "Sofía Martínez",
-    fecha: "25 Sep 2026",
-    estado: "Pendiente",
-    avance: 0,
-  },
-];
-
 function convertirInspeccionApi(item: InspectionBase): Inspeccion {
   const estados: Record<InspectionBase["status"], Estado> = {
-    draft: "Pendiente",
+    draft: item.answered_questions > 0 ? "En proceso" : "Pendiente",
     completed: "Completada",
     confirmed: "Confirmada",
     rejected: "Rechazada",
@@ -125,61 +78,202 @@ function convertirInspeccionApi(item: InspectionBase): Inspeccion {
 
   return {
     id: item.id,
-    area: `Área ${item.area_id.slice(0, 8)}`,
-    tipo: "—",
-    responsable: `Usuario ${item.user_id.slice(0, 8)}`,
+    area: item.area_name?.trim() || "Área no disponible",
+    tipo: item.checklist_name?.trim() || "Checklist no disponible",
+    planta: item.plant_name?.trim() || "Planta no disponible",
+    linea: item.production_line_name?.trim() || "",
+    version: item.checklist_version,
+    respondidas: item.answered_questions,
+    obligatorias: item.required_questions,
+    responsable: item.inspector_name?.trim() || `Usuario ${item.user_id.slice(0, 8)}`,
     fecha: fecha
       ? new Date(fecha).toLocaleDateString("es-MX", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
       : "—",
     estado: estados[item.status],
-    avance: null,
+    avance: item.progress,
   };
 }
 
-async function obtenerImagenParaPDF(src: string): Promise<{ dataUrl: string; formato: "PNG" | "JPEG"; width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    if (!src.startsWith("data:")) image.crossOrigin = "anonymous";
-    image.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = image.naturalWidth;
-        canvas.height = image.naturalHeight;
-        const context = canvas.getContext("2d");
-        if (!context) {
-          reject(new Error("No fue posible procesar una imagen de evidencia."));
-          return;
-        }
-        context.drawImage(image, 0, 0);
-        const esPng = src.startsWith("data:image/png");
-        resolve({
-          dataUrl: canvas.toDataURL(esPng ? "image/png" : "image/jpeg", 0.9),
-          formato: esPng ? "PNG" : "JPEG",
-          width: image.naturalWidth,
-          height: image.naturalHeight,
-        });
-      } catch {
-        reject(new Error("No se pudo leer una imagen. Verifica que la URL permita CORS o usa una data URL."));
-      }
-    };
-    image.onerror = () => reject(new Error("No se pudo cargar una imagen de evidencia."));
-    image.src = src;
-  });
+function textoAvance(item: Inspeccion): string {
+  return item.avance === null
+    ? "No aplica (sin preguntas obligatorias)"
+    : `${item.respondidas} de ${item.obligatorias} (${item.avance}%)`;
 }
 
 export default function Inspecciones() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const inspectionId = searchParams.get("inspectionId");
+  const organizationId = getOrganizationId();
+
+  const [cargandoAccesoDirecto, setCargandoAccesoDirecto] =
+    useState(false);
+
+  const [errorAccesoDirecto, setErrorAccesoDirecto] =
+    useState("");
+
   const [busqueda, setBusqueda] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState("Todos");
 
   const [datosInspecciones, setDatosInspecciones] =
-    useState<Inspeccion[]>(inspeccionesIniciales);
-  const [cargando, setCargando] = useState(false);
+    useState<Inspeccion[]>([]);
+  const [cargando, setCargando] = useState(true);
   const [errorApi, setErrorApi] = useState("");
+  const [generandoPDF, setGenerandoPDF] = useState(false);
   const [inspeccionSeleccionada, setInspeccionSeleccionada] = useState<Inspeccion | null>(null);
+
+  // El detalle se carga únicamente al abrir el modal; el listado no se altera.
+  const [detalleReal, setDetalleReal] = useState<InspectionDetail | null>(null);
+  const [checklistReal, setChecklistReal] = useState<InspectionChecklist | null>(null);
+  const [respuestasReales, setRespuestasReales] = useState<InspectionAnswer[]>([]);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [errorDetalle, setErrorDetalle] = useState("");
+  const [incidenciasReales, setIncidenciasReales] = useState<Incident[]>([]);
+  const [errorIncidencias, setErrorIncidencias] = useState("");
+
+  useEffect(() => {
+    if (!inspectionId) {
+      setCargandoAccesoDirecto(false);
+      setErrorAccesoDirecto("");
+      return;
+    }
+
+    const controller = new AbortController();
+
+    setInspeccionSeleccionada(null);
+    setCargandoAccesoDirecto(true);
+    setErrorAccesoDirecto("");
+
+    async function abrirInspeccionDesdeUrl() {
+      try {
+        const response = await getInspection(
+          inspectionId!,
+          controller.signal
+        );
+
+        if (
+          controller.signal.aborted ||
+          getOrganizationId() !== organizationId
+        ) {
+          return;
+        }
+
+        const inspeccion = convertirInspeccionApi(
+          response.data
+        );
+
+        setInspeccionSeleccionada(inspeccion);
+      } catch (error) {
+        if (
+          controller.signal.aborted ||
+          getOrganizationId() !== organizationId
+        ) {
+          return;
+        }
+
+        setErrorAccesoDirecto(
+          error instanceof Error
+            ? error.message
+            : "No fue posible abrir la inspección seleccionada."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setCargandoAccesoDirecto(false);
+        }
+      }
+    }
+
+    void abrirInspeccionDesdeUrl();
+
+    return () => {
+      controller.abort();
+    };
+  }, [inspectionId, organizationId]);
+
+  function limpiarAccesoDirecto() {
+    setSearchParams(
+      (previous) => {
+        const params = new URLSearchParams(previous);
+
+        params.delete("inspectionId");
+
+        return params;
+      },
+      { replace: true }
+    );
+
+    setErrorAccesoDirecto("");
+    setCargandoAccesoDirecto(false);
+  }
+
+  function cerrarDetalle() {
+    setInspeccionSeleccionada(null);
+    limpiarAccesoDirecto();
+  }
+
+  useEffect(() => {
+    if (!inspeccionSeleccionada) {
+      setDetalleReal(null);
+      setChecklistReal(null);
+      setRespuestasReales([]);
+      setErrorDetalle("");
+      setIncidenciasReales([]);
+      setErrorIncidencias("");
+      setCargandoDetalle(false);
+      return;
+    }
+    let activo = true;
+    const id = inspeccionSeleccionada.id;
+    setDetalleReal(null);
+    setChecklistReal(null);
+    setRespuestasReales([]);
+    setErrorDetalle("");
+    setIncidenciasReales([]);
+    setErrorIncidencias("");
+    setCargandoDetalle(true);
+
+    async function cargarDetalle() {
+      try {
+        const [inspection, checklist, firstAnswers] = await Promise.all([
+          getInspection(id),
+          getInspectionChecklist(id),
+          getInspectionAnswers(id),
+        ]);
+        const answers = [...firstAnswers.data];
+        for (let page = 2; page <= firstAnswers.meta.last_page; page++) {
+          const next = await getInspectionAnswers(id, page);
+          answers.push(...next.data);
+        }
+        if (!activo) return;
+        setDetalleReal(inspection.data);
+        setChecklistReal(checklist.data);
+        setRespuestasReales(answers);
+        try {
+          const all = await getAllVisibleIncidents();
+          if (activo) setIncidenciasReales(all.filter((incident) => incident.inspection_id === id));
+        } catch (error) {
+          if (activo) setErrorIncidencias(
+            error instanceof Error ? error.message : "No fue posible consultar incidencias."
+          );
+        }
+
+
+      } catch (error) {
+        if (activo) setErrorDetalle(
+          error instanceof Error ? error.message : "No se pudo consultar el detalle."
+        );
+      } finally {
+        if (activo) setCargandoDetalle(false);
+      }
+    }
+    void cargarDetalle();
+    return () => { activo = false; };
+  }, [inspeccionSeleccionada?.id]);
+
 
   useEffect(() => {
     if (!isApiConfigured) return;
@@ -196,8 +290,14 @@ export default function Inspecciones() {
           perPage: 100,
         });
 
-        if (!activo) return;
-        setDatosInspecciones(respuesta.data.map(convertirInspeccionApi));
+        const registros = [...respuesta.data];
+        for (let page = 2; page <= respuesta.meta.last_page; page++) {
+          if (!activo || getOrganizationId() !== organizationId) return;
+          const siguiente = await getInspections({ page, perPage: 100 });
+          registros.push(...siguiente.data);
+        }
+        if (!activo || getOrganizationId() !== organizationId) return;
+        setDatosInspecciones(registros.map(convertirInspeccionApi));
       } catch (error) {
         if (!activo) return;
         setErrorApi(
@@ -215,16 +315,19 @@ export default function Inspecciones() {
     return () => {
       activo = false;
     };
-  }, []);
+  }, [organizationId]);
 
   const inspecciones = useMemo(() => {
     return datosInspecciones.filter((inspeccion) => {
-      const texto = busqueda.toLowerCase();
+      const texto = busqueda.trim().toLowerCase();
 
       const coincideBusqueda =
         inspeccion.id.toLowerCase().includes(texto) ||
         inspeccion.area.toLowerCase().includes(texto) ||
-        inspeccion.responsable.toLowerCase().includes(texto);
+        inspeccion.responsable.toLowerCase().includes(texto) ||
+        inspeccion.tipo.toLowerCase().includes(texto) ||
+        inspeccion.planta.toLowerCase().includes(texto) ||
+        inspeccion.linea.toLowerCase().includes(texto);
 
       const coincideEstado =
         estadoFiltro === "Todos" ||
@@ -237,7 +340,7 @@ export default function Inspecciones() {
   const total = datosInspecciones.length;
 
   const completadas = datosInspecciones.filter(
-    (item) => item.estado === "Completada"
+    (item) => item.estado === "Completada" || item.estado === "Confirmada"
   ).length;
 
   const enProceso = datosInspecciones.filter(
@@ -249,129 +352,106 @@ export default function Inspecciones() {
   ).length;
 
   const generarPDF = async () => {
-    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    const fechaGeneracion = new Date().toLocaleString("es-MX");
-    const azul = [22, 50, 79] as [number, number, number];
-    const verde = [15, 157, 138] as [number, number, number];
-
-    pdf.setFont("helvetica", "bold");
-    pdf.setFontSize(19);
-    pdf.setTextColor(...azul);
-    pdf.text("INSPECTA | Reporte de inspecciones", 14, 17);
-    pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
-    pdf.setTextColor(100, 116, 139);
-    pdf.text(`Generado: ${fechaGeneracion}`, 14, 24);
-    pdf.text(`Inspecciones incluidas: ${datosInspecciones.length}`, 14, 29);
-
-    autoTable(pdf, {
-      startY: 35,
-      head: [["Folio", "Área", "Tipo", "Responsable", "Fecha", "Estado", "Avance"]],
-      body: datosInspecciones.map((item) => [
-        item.id,
-        item.area,
-        item.tipo,
-        item.responsable,
-        item.fecha,
-        item.estado,
-        item.avance === null ? "Sin datos" : `${item.avance}%`,
-      ]),
-      theme: "grid",
-      headStyles: { fillColor: azul, textColor: 255, fontStyle: "bold" },
-      styles: { fontSize: 8, cellPadding: 2.5, overflow: "linebreak" },
-      alternateRowStyles: { fillColor: [246, 249, 252] },
-      margin: { left: 14, right: 14 },
-    });
-
-    for (const item of datosInspecciones) {
-      pdf.addPage();
-      const detalle = detallesDemo[item.id] ?? detallesDemo.default;
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(16);
-      pdf.setTextColor(...azul);
-      pdf.text(`Detalle de inspección: ${item.id}`, 14, 17);
-
-      autoTable(pdf, {
-        startY: 23,
-        head: [["Campo", "Información"]],
-        body: [
-          ["Área de trabajo", item.area],
-          ["Tipo de inspección", item.tipo],
-          ["Inspector responsable", item.responsable],
-          ["Fecha", item.fecha],
-          ["Estado", item.estado],
-          ["Avance", item.avance === null ? "Sin datos disponibles" : `${item.avance}%`],
-          ["Prioridad general", detalle.prioridad],
-          ["Objetivo y alcance", detalle.objetivo],
-          ["Observaciones", detalle.observaciones],
-        ],
-        theme: "grid",
-        headStyles: { fillColor: verde, textColor: 255 },
-        styles: { fontSize: 8, cellPadding: 2.5, overflow: "linebreak" },
-        columnStyles: { 0: { cellWidth: 42, fontStyle: "bold" }, 1: { cellWidth: "auto" } },
-        margin: { left: 14, right: 14 },
-      });
-
-      let y = (pdf as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 100;
-      y += 8;
-      pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(11);
-      pdf.setTextColor(...azul);
-      pdf.text(`Incidencias detectadas (${detalle.incidencias.length})`, 14, y);
-
-      autoTable(pdf, {
-        startY: y + 4,
-        head: [["Incidencia", "Descripción", "Riesgo", "Ubicación", "Acción recomendada", "Responsable", "Fecha límite"]],
-        body: detalle.incidencias.length
-          ? detalle.incidencias.map((incidencia) => [
-              incidencia.titulo,
-              incidencia.descripcion,
-              incidencia.riesgo,
-              incidencia.ubicacion,
-              incidencia.accion,
-              incidencia.responsable,
-              incidencia.fechaLimite,
-            ])
-          : [["Sin incidencias registradas en los datos de demostración", "—", "—", "—", "—", "—", "—"]],
-        theme: "grid",
-        headStyles: { fillColor: azul, textColor: 255 },
-        styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
-        margin: { left: 14, right: 14 },
-      });
-
-      for (const incidencia of detalle.incidencias) {
-        for (const evidencia of incidencia.imagenes ?? []) {
-          try {
-            const imagen = await obtenerImagenParaPDF(evidencia.src);
-            pdf.addPage();
-            pdf.setFont("helvetica", "bold");
-            pdf.setFontSize(15);
-            pdf.setTextColor(...azul);
-            pdf.text(`Evidencia fotográfica | ${item.id}`, 14, 17);
-            pdf.setFont("helvetica", "normal");
-            pdf.setFontSize(10);
-            pdf.text(`Incidencia: ${incidencia.titulo}`, 14, 25, { maxWidth: 180 });
-            const descripcion = evidencia.descripcion || "Evidencia fotográfica";
-            pdf.setFontSize(9);
-            pdf.text(`Tipo: ${evidencia.tipo || "General"} · ${descripcion}`, 14, 33, { maxWidth: 260 });
-            if (evidencia.fecha) pdf.text(`Fecha: ${evidencia.fecha}`, 14, 39);
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const top = evidencia.fecha ? 45 : 39;
-            const maxWidth = pageWidth - 28;
-            const maxHeight = pageHeight - top - 14;
-            const scale = Math.min(maxWidth / imagen.width, maxHeight / imagen.height);
-            const width = imagen.width * scale;
-            const height = imagen.height * scale;
-            pdf.addImage(imagen.dataUrl, imagen.formato, (pageWidth - width) / 2, top, width, height);
-          } catch (error) {
-            console.warn(`No se pudo agregar evidencia de ${item.id}:`, error);
-          }
+    if (generandoPDF || cargando || datosInspecciones.length === 0) return;
+    setGenerandoPDF(true);
+    setErrorApi("");
+    try {
+      // No emitir un PDF parcial cuando una consulta obligatoria falla.
+      const allIncidents = await getAllVisibleIncidents();
+      const details = await Promise.all(datosInspecciones.map(async (item) => {
+        const [inspection, checklist, first] = await Promise.all([
+          getInspection(item.id), getInspectionChecklist(item.id), getInspectionAnswers(item.id),
+        ]);
+        const answers = [...first.data];
+        for (let page = 2; page <= first.meta.last_page; page++) {
+          const next = await getInspectionAnswers(item.id, page);
+          answers.push(...next.data);
         }
-      }
-    }
+        return {
+          item, inspection: inspection.data, checklist: checklist.data, answers,
+          incidents: allIncidents.filter((incident) => incident.inspection_id === item.id)
+        };
+      }));
 
-    pdf.save(`Inspecta-reporte-inspecciones-${new Date().toISOString().slice(0, 10)}.pdf`);
+      const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const azul: [number, number, number] = [22, 50, 79];
+      const verde: [number, number, number] = [15, 157, 138];
+      const finalY = () => (pdf as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 35;
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(18);
+      pdf.setTextColor(...azul);
+      pdf.text("INSPECTA | Reporte de inspecciones", 14, 17);
+      pdf.setFontSize(9);
+      pdf.text(`Generado: ${new Date().toLocaleString("es-MX")} | Registros: ${details.length}`, 14, 25);
+      autoTable(pdf, {
+        startY: 32,
+        head: [["Inspección", "Checklist", "Inspector", "Área", "Estado"]],
+        body: details.map(({ item, inspection, checklist }) => [
+          item.id, checklist.checklist.name ?? "No disponible",
+          inspection.inspector_name || inspection.user_id, inspection.area_name || item.area, convertirInspeccionApi(inspection).estado,
+        ]),
+        theme: "grid", headStyles: { fillColor: azul }, styles: { fontSize: 8, overflow: "linebreak" },
+      });
+      for (const { item, inspection, checklist, answers, incidents } of details) {
+        pdf.addPage();
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(14);
+        pdf.setTextColor(...azul);
+        pdf.text("Detalle de inspección", 14, 17);
+        pdf.setFontSize(8);
+        pdf.text(item.id, 14, 23);
+        const answerMap = new Map(answers.map((answer) => [answer.question_id, answer]));
+        autoTable(pdf, {
+          startY: 28, head: [["Campo", "Valor"]],
+          body: [
+            ["Área", inspection.area_name || item.area],
+            ["Checklist", checklist.checklist.name ?? "No disponible"],
+            ["Versión", checklist.checklist_version.version],
+            ["Inspector", inspection.inspector_name || inspection.user_id],
+            ["Fecha", item.fecha],
+            ["Estado", convertirInspeccionApi(inspection).estado],
+            ["Avance", textoAvance(convertirInspeccionApi(inspection))],
+            ["Observaciones del inspector", inspection.observations || "Sin observaciones"],
+            ["Observaciones del supervisor", inspection.supervisor_observations || "Sin observaciones"],
+          ],
+          theme: "grid", headStyles: { fillColor: verde }, styles: { fontSize: 8, overflow: "linebreak" },
+          columnStyles: { 0: { cellWidth: 60 } },
+        });
+        let y = finalY() + 10;
+        if (y > 175) { pdf.addPage(); y = 18; }
+        pdf.setFontSize(11);
+        pdf.setTextColor(...azul);
+        pdf.text("Checklist y respuestas", 14, y);
+        autoTable(pdf, {
+          startY: y + 4,
+          head: [["Sección", "Pregunta", "Respuesta", "Observación"]],
+          body: checklist.sections.flatMap((section) => section.questions.map((question) => {
+            const answer = answerMap.get(question.id);
+            return [section.name, question.question_text, answer?.answer ?? "Sin responder", answer?.observation ?? "—"];
+          })),
+          theme: "grid", headStyles: { fillColor: azul }, styles: { fontSize: 8, overflow: "linebreak" },
+        });
+        y = finalY() + 10;
+        if (y > 175) { pdf.addPage(); y = 18; }
+        pdf.setFontSize(11);
+        pdf.text(`Incidencias relacionadas (${incidents.length})`, 14, y);
+        autoTable(pdf, {
+          startY: y + 4,
+          head: [["Título", "Descripción", "Riesgo", "Estado", "Ubicación"]],
+          body: incidents.length ? incidents.map((incident) => [
+            incident.title, incident.description, incident.risk_level,
+            incident.status, incident.location_description || inspection.area_name || item.area,
+          ]) : [["Sin incidencias relacionadas visibles", "—", "—", "—", "—"]],
+          theme: "grid", headStyles: { fillColor: azul }, styles: { fontSize: 8, overflow: "linebreak" },
+        });
+      }
+      pdf.save(`Inspecta-reporte-inspecciones-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (error) {
+      console.error("No fue posible generar el PDF:", error);
+      setErrorApi(error instanceof Error ? `No fue posible generar el PDF: ${error.message}` : "No fue posible generar el PDF.");
+    } finally {
+      setGenerandoPDF(false);
+    }
   };
 
   const getEstadoColor = (estado: Estado) => {
@@ -465,6 +545,7 @@ export default function Inspecciones() {
           variant="contained"
           startIcon={<PictureAsPdfIcon />}
           onClick={generarPDF}
+          disabled={generandoPDF || cargando || datosInspecciones.length === 0}
           sx={{
             backgroundColor: "#0F9D8A",
             px: 2.5,
@@ -474,14 +555,31 @@ export default function Inspecciones() {
             },
           }}
         >
-          Generar PDF
+          {generandoPDF ? "Generando PDF..." : "Generar PDF"}
         </Button>
       </Box>
 
       {errorApi && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          No se pudieron cargar las inspecciones de la API. Se conservan los
-          datos disponibles. Detalle: {errorApi}
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {errorApi}
+        </Alert>
+      )}
+
+      {cargandoAccesoDirecto && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Abriendo la inspección seleccionada...
+        </Alert>
+      )}
+
+      {errorAccesoDirecto && (
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          onClose={limpiarAccesoDirecto}
+        >
+          No fue posible abrir la inspección seleccionada.
+          {" "}
+          {errorAccesoDirecto}
         </Alert>
       )}
 
@@ -515,7 +613,7 @@ export default function Inspecciones() {
         <SummaryCard
           title="En proceso"
           value={enProceso}
-          icon={<PlayCircleIcon/>}
+          icon={<PlayCircleIcon />}
           iconColor="#B77900"
           iconBackground="#FFF5D9"
         />
@@ -558,7 +656,7 @@ export default function Inspecciones() {
             <TextField
               fullWidth
               size="small"
-              placeholder="Buscar por folio, área o responsable..."
+              placeholder="Buscar por folio, checklist, ubicación o responsable..."
               value={busqueda}
               onChange={(event) => setBusqueda(event.target.value)}
               slotProps={{
@@ -639,7 +737,7 @@ export default function Inspecciones() {
                     color: "#16324F",
                   }}
                 >
-                  Tipo
+                  Checklist
                 </TableCell>
 
                 <TableCell
@@ -718,6 +816,8 @@ export default function Inspecciones() {
                       >
                         {inspeccion.area}
                       </Typography>
+                      <Typography sx={{ fontSize: 12, color: "#81909D" }}>{inspeccion.planta}</Typography>
+                      {inspeccion.linea && <Typography sx={{ fontSize: 12, color: "#81909D" }}>{inspeccion.linea}</Typography>}
                     </TableCell>
 
                     <TableCell>
@@ -729,6 +829,7 @@ export default function Inspecciones() {
                       >
                         {inspeccion.tipo}
                       </Typography>
+                      {inspeccion.version && <Typography sx={{ fontSize: 12, color: "#81909D" }}>Versión {inspeccion.version}</Typography>}
                     </TableCell>
 
                     <TableCell>
@@ -776,10 +877,11 @@ export default function Inspecciones() {
                           }}
                         >
                           {inspeccion.avance === null
-                            ? "Sin datos"
+                            ? "No aplica"
                             : `${inspeccion.avance}%`}
                         </Typography>
 
+                        {inspeccion.avance !== null && <Typography sx={{ fontSize: 11, color: "#81909D" }}>{inspeccion.respondidas} de {inspeccion.obligatorias}</Typography>}
                         <Box
                           sx={{
                             width: "100%",
@@ -796,7 +898,7 @@ export default function Inspecciones() {
                                 height: "100%",
                                 backgroundColor:
                                   inspeccion.estado === "Completada" ||
-                                  inspeccion.estado === "Confirmada"
+                                    inspeccion.estado === "Confirmada"
                                     ? "#16803C"
                                     : "#0F9D8A",
                                 borderRadius: 10,
@@ -811,7 +913,10 @@ export default function Inspecciones() {
                       <Button
                         size="small"
                         startIcon={<VisibilityIcon />}
-                        onClick={() => setInspeccionSeleccionada(inspeccion)}
+                        onClick={() => {
+                          limpiarAccesoDirecto();
+                          setInspeccionSeleccionada(inspeccion);
+                        }}
                         sx={{
                           color: "#16324F",
                           fontWeight: 600,
@@ -850,185 +955,193 @@ export default function Inspecciones() {
         </TableContainer>
       </Card>
 
-      {/* DETALLE DE LA INSPECCIÓN */}
+      {/* DETALLE DE LA INSPECCIÓN: datos obtenidos desde la API */}
       <Dialog
         open={Boolean(inspeccionSeleccionada)}
-        onClose={() => setInspeccionSeleccionada(null)}
+        onClose={cerrarDetalle}
         fullWidth
         maxWidth="md"
         slotProps={{ paper: { sx: { borderRadius: 3 } } }}
       >
         {inspeccionSeleccionada && (() => {
-          const detalle = detallesDemo[inspeccionSeleccionada.id] ?? detallesDemo.default;
-          const estadoDetalle = getEstadoColor(inspeccionSeleccionada.estado);
+          const resumen = detalleReal ? convertirInspeccionApi(detalleReal) : inspeccionSeleccionada;
+          const estadoDetalle = getEstadoColor(resumen.estado);
+          const preguntas = checklistReal?.sections.flatMap((seccion) =>
+            seccion.questions.map((pregunta) => ({ ...pregunta, seccion: seccion.name }))
+          ) ?? [];
+          const respuestasPorPregunta = new Map(
+            respuestasReales.map((respuesta) => [respuesta.question_id, respuesta])
+          );
+          const respondidas = preguntas.filter((pregunta) => {
+            const respuesta = respuestasPorPregunta.get(pregunta.id);
+            return respuesta && respuesta.answer !== null && respuesta.answer.trim() !== "";
+          }).length;
+          const fecha = detalleReal?.completed_at ?? detalleReal?.started_at;
+          const fechaLegible = fecha
+            ? new Date(fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })
+            : "No disponible";
+          const campos = [
+            ["Área de trabajo", resumen.area],
+            ["Planta", resumen.planta],
+            ["Línea de producción", resumen.linea || "No aplica"],
+            ["Checklist", resumen.tipo],
+            ["Versión", resumen.version ?? "No disponible"],
+            ["Inspector responsable", detalleReal?.inspector_name?.trim() || detalleReal?.user_id || "No disponible"],
+            ["Fecha", fechaLegible],
+            ["Avance", textoAvance(resumen)],
+            ["Estado", resumen.estado],
+          ];
 
           return (
             <>
               <DialogTitle sx={{ pb: 1 }}>
-                <Box
-  sx={{
-    display: "flex",
-    flexDirection: { xs: "column", sm: "row" },
-    justifyContent: "space-between",
-    alignItems: { xs: "flex-start", sm: "center" },
-    gap: 1,
-  }}
->
-                  <Box>
+                <Box sx={{
+                  display: "flex", flexDirection: { xs: "column", sm: "row" },
+                  justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, gap: 1
+                }}>
+                  <Box sx={{ minWidth: 0 }}>
                     <Typography sx={{ color: "#0F9D8A", fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>
                       DETALLE DE INSPECCIÓN
                     </Typography>
-                    <Typography variant="h5" sx={{ color: "#16324F", fontWeight: 700 }}>
+                    <Typography variant="h6" sx={{ color: "#16324F", fontWeight: 700, overflowWrap: "anywhere" }}>
                       {inspeccionSeleccionada.id}
                     </Typography>
                   </Box>
-                  <Chip
-                    label={inspeccionSeleccionada.estado}
-                    sx={{ color: estadoDetalle.color, backgroundColor: estadoDetalle.background, fontWeight: 700 }}
-                  />
+                  <Chip label={resumen.estado} sx={{
+                    color: estadoDetalle.color, backgroundColor: estadoDetalle.background, fontWeight: 700
+                  }} />
                 </Box>
               </DialogTitle>
-
               <DialogContent dividers>
-                <Stack spacing={3}>
-                  <Box>
-                    <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1.5 }}>
-                      Información general
-                    </Typography>
-                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 2 }}>
-                      {[
-                        ["Área de trabajo", inspeccionSeleccionada.area],
-                        ["Tipo de inspección", inspeccionSeleccionada.tipo],
-                        ["Inspector responsable", inspeccionSeleccionada.responsable],
-                        ["Fecha", inspeccionSeleccionada.fecha],
-                        ["Avance", inspeccionSeleccionada.avance === null ? "Sin datos disponibles" : `${inspeccionSeleccionada.avance}%`],
-                        ["Prioridad general", detalle.prioridad],
-                      ].map(([label, value]) => (
-                        <Box key={label} sx={{ p: 1.5, bgcolor: "#F8FAFC", borderRadius: 2 }}>
-                          <Typography sx={{ color: "#81909D", fontSize: 12, mb: 0.5 }}>{label}</Typography>
-                          <Typography sx={{ color: "#16324F", fontWeight: 600 }}>{value}</Typography>
+                {cargandoDetalle && <Alert severity="info" sx={{ mb: 2 }}>Cargando detalle de la inspección...</Alert>}
+                {errorDetalle && <Alert severity="error" sx={{ mb: 2 }}>No fue posible cargar el detalle. {errorDetalle}</Alert>}
+                {!cargandoDetalle && !errorDetalle && detalleReal && checklistReal && (
+                  <Stack spacing={3}>
+                    <Box>
+                      <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1.5 }}>
+                        Información general
+                      </Typography>
+                      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 2 }}>
+                        {campos.map(([label, value]) => (
+                          <Box key={label} sx={{ p: 1.5, bgcolor: "#F8FAFC", borderRadius: 2, minWidth: 0 }}>
+                            <Typography sx={{ color: "#81909D", fontSize: 12, mb: 0.5 }}>{label}</Typography>
+                            <Typography sx={{ color: "#16324F", fontWeight: 600, overflowWrap: "anywhere" }}>
+                              {value}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    </Box>
+
+                    <Divider />
+
+                    <Box>
+                      <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>Objetivo y alcance</Typography>
+                      <Typography sx={{ color: "#526477", fontSize: 14, lineHeight: 1.7 }}>
+                        {checklistReal.checklist.name
+                          ? `Verificar los puntos del checklist «${checklistReal.checklist.name}» (versión ${checklistReal.checklist_version.version}).`
+                          : "No hay una descripción de objetivo disponible para esta inspección."}
+                      </Typography>
+                    </Box>
+
+                    <Divider />
+
+                    <Box>
+                      <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1.5 }}>
+                        Checklist y respuestas ({respondidas}/{preguntas.length} respuestas registradas)
+                      </Typography>
+                      {checklistReal.sections.length === 0 && (
+                        <Alert severity="info">Esta versión del checklist no contiene secciones.</Alert>
+                      )}
+                      {checklistReal.sections.map((seccion) => (
+                        <Box key={seccion.id} sx={{ mb: 2 }}>
+                          <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
+                            {seccion.name}
+                          </Typography>
+                          <Stack spacing={1}>
+                            {seccion.questions.map((pregunta) => {
+                              const respuesta = respuestasPorPregunta.get(pregunta.id);
+                              return (
+                                <Box key={pregunta.id} sx={{ border: "1px solid #E1E8EF", borderRadius: 2, p: 2 }}>
+                                  <Typography sx={{ fontWeight: 600, color: "#273746", mb: 0.5 }}>
+                                    {pregunta.question_text}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: 13, color: respuesta ? "#16324F" : "#81909D" }}>
+                                    Respuesta: {respuesta?.answer ?? "Sin responder"}
+                                  </Typography>
+                                  {respuesta?.observation && (
+                                    <Typography sx={{ fontSize: 12, color: "#526477", mt: 0.5 }}>
+                                      Observación: {respuesta.observation}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              );
+                            })}
+                          </Stack>
                         </Box>
                       ))}
                     </Box>
-                  </Box>
 
-                  <Divider />
+                    <Divider />
 
-                  <Box>
-                    <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
-                      Objetivo y alcance
-                    </Typography>
-                    <Typography sx={{ color: "#526477", fontSize: 14, lineHeight: 1.7 }}>
-                      {detalle.objetivo}
-                    </Typography>
-                    <Typography sx={{ color: "#81909D", fontSize: 12, mt: 1 }}>
-                      Los datos de incidencias que se muestran son de demostración y deberán sustituirse por los registros de la API.
-                    </Typography>
-                  </Box>
-
-                  <Divider />
-
-                  <Box>
-                    <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1.5 }}>
-                      Incidencias detectadas ({detalle.incidencias.length})
-                    </Typography>
-                    {detalle.incidencias.length ? (
-                      <Stack spacing={1.5}>
-                        {detalle.incidencias.map((incidencia, index) => (
-                          <Box key={`${incidencia.titulo}-${index}`} sx={{ border: "1px solid #E1E8EF", borderRadius: 2, p: 2 }}>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                flexDirection: { xs: "column", sm: "row" },
-                                justifyContent: "space-between",
-                                alignItems: { xs: "flex-start", sm: "center" },
-                                gap: 1,
-                                mb: 1,
-                              }}
-                            >
-                              <Typography sx={{ color: "#16324F", fontWeight: 700 }}>
-                                {index + 1}. {incidencia.titulo}
+                    <Box>
+                      <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
+                        Incidencias detectadas {errorIncidencias ? "" : `(${incidenciasReales.length})`}
+                      </Typography>
+                      {errorIncidencias ? (
+                        <Alert severity="warning">No se pudieron cargar las incidencias: {errorIncidencias}</Alert>
+                      ) : incidenciasReales.length === 0 ? (
+                        <Alert severity="info">No se encontraron incidencias asociadas entre los registros accesibles.</Alert>
+                      ) : (
+                        <Stack spacing={1.5}>
+                          {incidenciasReales.map((incident) => (
+                            <Box key={incident.id} sx={{ border: "1px solid #E1E8EF", borderRadius: 2, p: 2 }}>
+                              <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+                                <Typography sx={{ color: "#16324F", fontWeight: 700 }}>{incident.title}</Typography>
+                                <Chip size="small" label={{ low: "Bajo", medium: "Medio", high: "Alto", critical: "Crítico" }[incident.risk_level]} color={incident.risk_level === "critical" || incident.risk_level === "high" ? "error" : incident.risk_level === "medium" ? "warning" : "info"} />
+                              </Box>
+                              <Typography sx={{ color: "#526477", fontSize: 14, my: 1, whiteSpace: "pre-wrap" }}>{incident.description}</Typography>
+                              <Typography sx={{ color: "#526477", fontSize: 13 }}>
+                                Estado: {({ open: "Abierta", in_progress: "En proceso", resolved: "Resuelta", closed: "Cerrada" } as Record<string, string>)[incident.status]}
                               </Typography>
-                              <Chip
-                                size="small"
-                                label={incidencia.riesgo}
-                                color={incidencia.riesgo === "Alto" ? "error" : incidencia.riesgo === "Medio" ? "warning" : "info"}
-                              />
-                            </Box>
-                            <Typography sx={{ color: "#526477", fontSize: 14, mb: 1.5, lineHeight: 1.6 }}>
-                              {incidencia.descripcion}
-                            </Typography>
-                            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
-                              <Box>
-                                <Typography sx={{ color: "#81909D", fontSize: 12 }}>Ubicación</Typography>
-                                <Typography sx={{ color: "#273746", fontSize: 13 }}>{incidencia.ubicacion}</Typography>
-                              </Box>
-                              <Box>
-                                <Typography sx={{ color: "#81909D", fontSize: 12 }}>Acción recomendada</Typography>
-                                <Typography sx={{ color: "#273746", fontSize: 13 }}>{incidencia.accion}</Typography>
-                              </Box>
-                              <Box>
-                                <Typography sx={{ color: "#81909D", fontSize: 12 }}>Responsable de seguimiento</Typography>
-                                <Typography sx={{ color: "#273746", fontSize: 13 }}>{incidencia.responsable}</Typography>
-                              </Box>
-                              <Box>
-                                <Typography sx={{ color: "#81909D", fontSize: 12 }}>Fecha límite</Typography>
-                                <Typography sx={{ color: "#273746", fontSize: 13 }}>{incidencia.fechaLimite}</Typography>
-                              </Box>
-                            </Box>
-                            <Box sx={{ mt: 2 }}>
-                              <Typography sx={{ color: "#16324F", fontSize: 13, fontWeight: 700, mb: 1 }}>
-                                Evidencias fotográficas ({incidencia.imagenes?.length ?? 0})
+                              <Typography sx={{ color: "#526477", fontSize: 13 }}>
+                                Ubicación: {incident.location_description || resumen.area}
                               </Typography>
-                              {incidencia.imagenes && incidencia.imagenes.length > 0 ? (
-                                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" }, gap: 1.5 }}>
-                                  {incidencia.imagenes.map((imagen, imageIndex) => (
-                                    <Box key={`${imagen.src}-${imageIndex}`} sx={{ border: "1px solid #E1E8EF", borderRadius: 2, p: 1, minWidth: 0 }}>
-                                      <Box
-                                        component="img"
-                                        src={imagen.src}
-                                        alt={imagen.descripcion || `Evidencia ${imageIndex + 1}`}
-                                        sx={{ display: "block", width: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 1, bgcolor: "#F8FAFC" }}
-                                      />
-                                      <Typography sx={{ color: "#526477", fontSize: 12, mt: 1 }}>
-                                        {imagen.tipo ? `${imagen.tipo} · ` : ""}{imagen.descripcion || `Evidencia ${imageIndex + 1}`}
-                                      </Typography>
-                                      {imagen.fecha && <Typography sx={{ color: "#81909D", fontSize: 11 }}>{imagen.fecha}</Typography>}
-                                    </Box>
-                                  ))}
-                                </Box>
-                              ) : (
-                                <Box sx={{ border: "1px dashed #C7D7E8", borderRadius: 2, p: 1.5, bgcolor: "#F8FAFC" }}>
-                                  <Typography sx={{ color: "#526477", fontSize: 12 }}>
-                                    No hay fotografías asociadas a esta incidencia. El apartado está preparado para mostrar evidencias cuando se agreguen al registro.
-                                  </Typography>
-                                </Box>
-                              )}
+                              <Typography sx={{ color: "#526477", fontSize: 13 }}>
+                                Reportada: {incident.reported_at ? new Date(incident.reported_at).toLocaleDateString("es-MX") : "Sin fecha"}
+                              </Typography>
                             </Box>
-                          </Box>
-                        ))}
-                      </Stack>
-                    ) : (
-                      <Alert severity="success">No se registran incidencias para esta inspección de demostración.</Alert>
-                    )}
-                  </Box>
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
 
-                  <Divider />
+                    <Divider />
 
-                  <Box>
-                    <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
-                      Observaciones del inspector
-                    </Typography>
-                    <Typography sx={{ color: "#526477", fontSize: 14, lineHeight: 1.7 }}>
-                      {detalle.observaciones}
-                    </Typography>
-                  </Box>
-                </Stack>
+                    <Box>
+                      <Typography sx={{ color: "#16324F", fontWeight: 700, mb: 1 }}>
+                        Observaciones del inspector
+                      </Typography>
+                      <Typography sx={{ color: "#526477", fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                        {detalleReal.observations?.trim() || "No hay observaciones registradas."}
+                      </Typography>
+                      {detalleReal.supervisor_observations && (
+                        <>
+                          <Typography sx={{ color: "#16324F", fontWeight: 700, mt: 2, mb: 1 }}>
+                            Observaciones del supervisor
+                          </Typography>
+                          <Typography sx={{ color: "#526477", fontSize: 14, whiteSpace: "pre-wrap" }}>
+                            {detalleReal.supervisor_observations}
+                          </Typography>
+                        </>
+                      )}
+                    </Box>
+                  </Stack>
+                )}
               </DialogContent>
-
               <DialogActions sx={{ p: 2 }}>
                 <Button
-                  onClick={() => setInspeccionSeleccionada(null)}
+                  onClick={cerrarDetalle}
                   variant="contained"
                   sx={{ bgcolor: "#16324F", textTransform: "none", "&:hover": { bgcolor: "#234766" } }}
                 >
@@ -1044,80 +1157,6 @@ export default function Inspecciones() {
   );
 }
 
-type EvidenciaImagen = {
-  src: string; // URL accesible con CORS o data URL (base64)
-  descripcion?: string;
-  fecha?: string;
-  tipo?: "Antes" | "Después" | "General";
-};
-
-type IncidenciaDetalle = {
-  titulo: string;
-  descripcion: string;
-  riesgo: "Alto" | "Medio" | "Bajo";
-  ubicacion: string;
-  accion: string;
-  responsable: string;
-  fechaLimite: string;
-  imagenes?: EvidenciaImagen[];
-};
-
-const detallesDemo: Record<string, {
-  prioridad: string;
-  objetivo: string;
-  observaciones: string;
-  incidencias: IncidenciaDetalle[];
-}> = {
-  "INS-001": {
-    prioridad: "Alta",
-    objetivo: "Verificar condiciones seguras de almacenamiento, pasillos despejados, señalización y disponibilidad de equipo de protección personal en el almacén.",
-    observaciones: "Inspección en proceso. Se recomienda atender los hallazgos de mayor riesgo y documentar la evidencia de cierre.",
-    incidencias: [
-      { titulo: "Pasillo parcialmente obstruido", descripcion: "Se observó material almacenado en una zona de circulación peatonal, lo que puede dificultar el tránsito y una evacuación.", riesgo: "Alto", ubicacion: "Pasillo central del almacén", accion: "Retirar el material y mantener delimitada la ruta de circulación.", responsable: "Responsable de almacén", fechaLimite: "Por definir" },
-      { titulo: "Señalización preventiva deteriorada", descripcion: "Una señal de advertencia no se distingue claramente desde el acceso al área.", riesgo: "Medio", ubicacion: "Acceso al almacén", accion: "Reponer la señal y verificar su visibilidad.", responsable: "Seguridad e higiene", fechaLimite: "Por definir" },
-    ],
-  },
-  "INS-002": {
-    prioridad: "Por evaluar",
-    objetivo: "Revisar condiciones de seguridad de la Línea 3, incluyendo equipo de protección, señalización y condiciones de operación.",
-    observaciones: "Inspección pendiente de inicio; todavía no hay hallazgos verificados.",
-    incidencias: [],
-  },
-  "INS-003": {
-    prioridad: "Media",
-    objetivo: "Verificar orden, limpieza e higiene del área de producción.",
-    observaciones: "Inspección marcada como completada. Confirmar que los hallazgos y evidencias estén documentados en el registro definitivo.",
-    incidencias: [
-      { titulo: "Contenedor sin identificación visible", descripcion: "Se detectó un contenedor cuyo contenido no está identificado de forma clara.", riesgo: "Medio", ubicacion: "Zona de producción", accion: "Identificar el contenedor conforme al procedimiento interno.", responsable: "Responsable de producción", fechaLimite: "Por definir" },
-    ],
-  },
-  "INS-004": {
-    prioridad: "Alta",
-    objetivo: "Revisar los riesgos de seguridad y las condiciones de trabajo de la Línea 2.",
-    observaciones: "Inspección en proceso. Los hallazgos mostrados son ilustrativos y requieren validación por el inspector.",
-    incidencias: [
-      { titulo: "Resguardo de máquina por verificar", descripcion: "Es necesario confirmar que el resguardo del equipo esté colocado y funcione correctamente antes de operar.", riesgo: "Alto", ubicacion: "Estación de trabajo de Línea 2", accion: "Verificar el resguardo y documentar el resultado antes de continuar la operación.", responsable: "Mantenimiento y producción", fechaLimite: "Por definir" },
-    ],
-  },
-  "INS-005": {
-    prioridad: "Baja",
-    objetivo: "Verificar orden y limpieza en el área de mantenimiento.",
-    observaciones: "Inspección completada. Revisar el registro oficial para consultar evidencias y confirmar el cierre de las acciones.",
-    incidencias: [],
-  },
-  "INS-006": {
-    prioridad: "Por evaluar",
-    objetivo: "Revisar condiciones de seguridad en el almacén.",
-    observaciones: "Inspección pendiente de inicio; no se han capturado incidencias.",
-    incidencias: [],
-  },
-  default: {
-    prioridad: "Por evaluar",
-    objetivo: "Consultar el cumplimiento de los puntos definidos para esta inspección.",
-    observaciones: "No hay observaciones adicionales disponibles en los datos de demostración.",
-    incidencias: [],
-  },
-};
 
 type SummaryCardProps = {
   title: string;

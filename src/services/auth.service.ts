@@ -1,13 +1,16 @@
+
 import {
   apiRequest,
-  clearAuthToken,
+  clearOrganizationId,
+  clearSession,
   setAuthToken,
 } from "../api/client";
 
 export interface AuthUser {
-  id: number;
+  id: string;
   name: string;
   email: string;
+  organization_id?: string | null;
   role?: string;
   [key: string]: unknown;
 }
@@ -25,7 +28,7 @@ interface LoginResponse {
 interface CurrentUserResponse {
   data?: AuthUser;
   user?: AuthUser;
-  id?: number;
+  id?: string;
   name?: string;
   email?: string;
   role?: string;
@@ -51,6 +54,9 @@ export async function login(
   email: string,
   password: string
 ): Promise<AuthUser> {
+  // Evita reutilizar la organización de una sesión anterior.
+  clearOrganizationId();
+
   const response = await apiRequest<LoginResponse>("/auth/login", {
     method: "POST",
     body: { email, password },
@@ -99,7 +105,6 @@ export async function logout(): Promise<void> {
       method: "POST",
     });
   } finally {
-    clearAuthToken();
-    localStorage.removeItem(USER_KEY);
+    clearSession();
   }
 }

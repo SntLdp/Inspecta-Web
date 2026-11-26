@@ -68,7 +68,7 @@ button {
   align-items: center;
   gap: 12px;
   padding: 5px 10px 25px;
-  border-bottom: 1px solid rgba(255,255,255,.12);
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
 }
 
 .sidebar-brand strong {
@@ -108,7 +108,7 @@ button {
 }
 
 .nav-item {
-  color: rgba(255,255,255,.75);
+  color: rgba(255, 255, 255, .75);
   text-decoration: none;
   padding: 12px 14px;
   border-radius: 12px;
@@ -116,7 +116,7 @@ button {
 }
 
 .nav-item:hover {
-  background: rgba(255,255,255,.08);
+  background: rgba(255, 255, 255, .08);
   color: white;
 }
 
@@ -350,7 +350,7 @@ h1 {
   margin-bottom: 13px;
 }
 
-.metric-top > span {
+.metric-top>span {
   font-size: 9px;
   color: #9aa6b0;
 }
@@ -425,10 +425,10 @@ h1 {
 
 .dashboard-card {
   width: 100%;
-  background: rgba(255,255,255,.95);
-  border: 1px solid rgba(220,230,238,.9);
+  background: rgba(255, 255, 255, .95);
+  border: 1px solid rgba(220, 230, 238, .9);
   border-radius: 20px;
-  box-shadow: 0 8px 30px rgba(22,50,79,.025);
+  box-shadow: 0 8px 30px rgba(22, 50, 79, .025);
 
   /*
     Importante:
@@ -594,12 +594,7 @@ h1 {
 
   display: grid;
   grid-template-columns:
-    38px
-    minmax(130px, 1fr)
-    65px
-    90px
-    90px
-    16px;
+    38px minmax(130px, 1fr) 65px 90px 90px 16px;
 
   align-items: center;
   gap: 10px;
@@ -804,7 +799,7 @@ h1 {
 
 .login-brand p {
   max-width: 500px;
-  color: rgba(255,255,255,.7);
+  color: rgba(255, 255, 255, .7);
   line-height: 1.7;
 }
 
@@ -815,7 +810,7 @@ h1 {
   background: white;
   border: 1px solid var(--gray);
   border-radius: 24px;
-  box-shadow: 0 20px 60px rgba(22,50,79,.08);
+  box-shadow: 0 20px 60px rgba(22, 50, 79, .08);
 }
 
 .login-card h2 {
@@ -847,7 +842,7 @@ h1 {
 
 .input:focus {
   border-color: var(--teal);
-  box-shadow: 0 0 0 3px rgba(15,157,138,.1);
+  box-shadow: 0 0 0 3px rgba(15, 157, 138, .1);
 }
 
 .login-card .primary-button {
@@ -870,13 +865,39 @@ html,
 body,
 #root {
   width: 100%;
+  min-width: 0;
   min-height: 100%;
   height: auto;
 }
 
-body {
+html {
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+#root {
+  overflow: visible;
+}
+
+/* Solo bloquear el scroll del documento
+   cuando está montado el layout administrativo */
+
+html:has(#root > .app-shell),
+body:has(#root > .app-shell) {
+  height: 100%;
+  overflow: hidden;
+}
+
+#root:has(> .app-shell) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Contenedor principal */
@@ -1004,7 +1025,7 @@ body {
     padding: 5px 0 20px;
   }
 
-  .sidebar-brand > div:last-child,
+  .sidebar-brand>div:last-child,
   .sidebar-footer {
     display: none;
   }
@@ -1188,73 +1209,7 @@ body {
   }
 
 }
-/* =====================================================
-   FIX DEFINITIVO DE SCROLL
-   Ionic bloquea el overflow del body
-   ===================================================== */
 
-html {
-  width: 100%;
-  min-height: 100%;
-  height: auto !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
-
-body {
-  width: 100%;
-  min-height: 100vh;
-  height: auto !important;
-
-  margin: 0;
-
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
-
-#root {
-  width: 100%;
-  min-height: 100vh;
-  height: auto !important;
-
-  overflow: visible !important;
-}
-
-.app-shell {
-  width: 100%;
-  min-height: 100vh;
-  height: auto !important;
-
-  overflow: visible !important;
-}
-
-.main-area {
-  min-height: 100vh;
-  height: auto !important;
-
-  overflow: visible !important;
-}
-
-.content {
-  min-height: calc(100vh - 84px);
-  height: auto !important;
-
-  overflow: visible !important;
-}
-
-.inspecta-dashboard {
-  height: auto !important;
-  min-height: 0;
-
-  overflow: visible !important;
-}
-
-.dashboard-lower-grid {
-  height: auto !important;
-  min-height: 0;
-
-  overflow: visible !important;
-}
 /* =====================================================
    INSPECTA - SIDEBAR CON PERFIL
    ===================================================== */
@@ -1287,7 +1242,7 @@ body {
 
   padding: 5px 10px 24px;
 
-  border-bottom: 1px solid rgba(255,255,255,.12);
+  border-bottom: 1px solid rgba(255, 255, 255, .12);
 }
 
 .sidebar-brand-text strong {
@@ -1305,7 +1260,7 @@ body {
 
   font-size: 10px;
 
-  color: rgba(255,255,255,.62);
+  color: rgba(255, 255, 255, .62);
 }
 
 
@@ -1334,7 +1289,7 @@ body {
 
   border-radius: 12px;
 
-  color: rgba(255,255,255,.72);
+  color: rgba(255, 255, 255, .72);
 
   text-decoration: none;
 
@@ -1348,7 +1303,7 @@ body {
 }
 
 .nav-item:hover {
-  background: rgba(255,255,255,.07);
+  background: rgba(255, 255, 255, .07);
 
   color: white;
 }
@@ -1359,7 +1314,7 @@ body {
   color: white;
 
   box-shadow:
-    0 8px 20px rgba(15,157,138,.18);
+    0 8px 20px rgba(15, 157, 138, .18);
 }
 
 .nav-icon {
@@ -1401,15 +1356,15 @@ body {
 
   border-radius: 14px;
 
-  background: rgba(255,255,255,.055);
+  background: rgba(255, 255, 255, .055);
 
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid rgba(255, 255, 255, .08);
 
   transition: background .2s ease;
 }
 
 .profile-card:hover {
-  background: rgba(255,255,255,.09);
+  background: rgba(255, 255, 255, .09);
 }
 
 
@@ -1461,7 +1416,7 @@ body {
 .profile-info span {
   display: block;
 
-  color: rgba(255,255,255,.52);
+  color: rgba(255, 255, 255, .52);
 
   font-size: 9px;
 
@@ -1483,7 +1438,7 @@ body {
 
   background: transparent;
 
-  color: rgba(255,255,255,.55);
+  color: rgba(255, 255, 255, .55);
 
   display: grid;
   place-items: center;
@@ -1496,7 +1451,7 @@ body {
 }
 
 .profile-more:hover {
-  background: rgba(255,255,255,.1);
+  background: rgba(255, 255, 255, .1);
 
   color: white;
 }
@@ -1523,7 +1478,7 @@ body {
   border-radius: 14px;
 
   box-shadow:
-    0 15px 40px rgba(22,50,79,.18);
+    0 15px 40px rgba(22, 50, 79, .18);
 
   z-index: 200;
 }
@@ -1598,13 +1553,13 @@ body {
 
   font-weight: 700;
 
-  color: rgba(255,255,255,.5);
+  color: rgba(255, 255, 255, .5);
 }
 
 .sidebar-footer small {
   font-size: 8px;
 
-  color: rgba(255,255,255,.3);
+  color: rgba(255, 255, 255, .3);
 }
 
 
@@ -1723,6 +1678,7 @@ body {
   }
 
 }
+
 .dashboard-title-row {
   display: flex;
 
@@ -1772,153 +1728,6 @@ body {
 }
 
 /* =====================================================
-   INSPECTA - CORRECCIÓN FINAL DE LAYOUT
-   Mantiene el diseño existente y corrige el sidebar/scroll
-   ===================================================== */
-
-html,
-body,
-#root {
-  width: 100%;
-  min-width: 0;
-  min-height: 100%;
-}
-
-html {
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
-
-body {
-  margin: 0;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
-
-#root {
-  min-height: 100vh;
-  overflow: visible !important;
-}
-
-.app-shell {
-  width: 100%;
-  min-height: 100vh;
-  height: auto !important;
-  display: flex;
-  overflow: visible !important;
-}
-
-/* Sidebar fijo y a toda la altura */
-.sidebar {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  bottom: 0 !important;
-
-  width: 270px !important;
-  height: 100vh !important;
-  min-height: 100vh !important;
-
-  display: flex !important;
-  flex-direction: column !important;
-
-  box-sizing: border-box;
-
-  overflow: hidden;
-  z-index: 1000;
-}
-
-/* La navegación ocupa el espacio disponible.
-   Si algún día hay muchos elementos, solo ella puede hacer scroll. */
-.sidebar-nav {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-
-/* Perfil y footer permanecen abajo */
-.sidebar-bottom {
-  flex: 0 0 auto;
-  margin-top: auto;
-}
-
-/* Área principal */
-.main-area {
-  width: calc(100% - 270px) !important;
-  min-width: 0;
-  min-height: 100vh !important;
-  height: auto !important;
-  margin-left: 270px !important;
-  background: var(--bg);
-  overflow: visible !important;
-}
-
-/* Todas las páginas pueden crecer verticalmente */
-.main-area .content,
-.content {
-  width: 100%;
-  min-width: 0;
-  min-height: 100vh;
-  height: auto !important;
-  box-sizing: border-box;
-  overflow: visible !important;
-}
-
-/* Evita que el contenido del dashboard fuerce alturas */
-.inspecta-dashboard,
-.dashboard-main-grid,
-.dashboard-lower-grid {
-  height: auto !important;
-  min-height: 0;
-  overflow: visible !important;
-}
-
-/* Las listas pueden mostrar todo su contenido */
-.inspection-list,
-.action-list {
-  height: auto;
-  max-height: none;
-}
-
-/* =====================================================
-   RESPONSIVE - mantiene el diseño existente
-   ===================================================== */
-
-@media (max-width: 900px) {
-  .sidebar {
-    width: 76px !important;
-  }
-
-  .main-area {
-    width: calc(100% - 76px) !important;
-    margin-left: 76px !important;
-  }
-}
-
-@media (max-width: 560px) {
-  .sidebar {
-    width: 64px !important;
-  }
-
-  .main-area {
-    width: calc(100% - 64px) !important;
-    margin-left: 64px !important;
-  }
-}
-
-@media (max-width: 400px) {
-  .sidebar {
-    width: 58px !important;
-  }
-
-  .main-area {
-    width: calc(100% - 58px) !important;
-    margin-left: 58px !important;
-  }
-}
-
-/* =====================================================
    INSPECTA - ESCALA TIPOGRÁFICA FINAL
    Mantiene el diseño existente y mejora la legibilidad.
    ===================================================== */
@@ -1927,455 +1736,1326 @@ body {
   font-size: 15px;
 }
 
-.sidebar-brand-text strong { font-size: 20px; }
-.sidebar-brand-text span { font-size: 11px; }
-.nav-item { font-size: 15px; }
-.sidebar-footer span { font-size: 10px; }
-.sidebar-footer small { font-size: 9px; }
-.profile-info strong { font-size: 12px; }
-.profile-info span { font-size: 10px; }
-.profile-menu button { font-size: 12px; }
+.sidebar-brand-text strong {
+  font-size: 20px;
+}
 
-.eyebrow { font-size: 12px; }
-h1 { font-size: 32px; }
-.page-description { font-size: 15px; }
+.sidebar-brand-text span {
+  font-size: 11px;
+}
 
-.primary-button { font-size: 14px; }
-.link-button { font-size: 13px; }
+.nav-item {
+  font-size: 15px;
+}
+
+.sidebar-footer span {
+  font-size: 10px;
+}
+
+.sidebar-footer small {
+  font-size: 9px;
+}
+
+.profile-info strong {
+  font-size: 12px;
+}
+
+.profile-info span {
+  font-size: 10px;
+}
+
+.profile-menu button {
+  font-size: 12px;
+}
+
+.eyebrow {
+  font-size: 12px;
+}
+
+h1 {
+  font-size: 32px;
+}
+
+.page-description {
+  font-size: 15px;
+}
+
+.primary-button {
+  font-size: 14px;
+}
+
+.link-button {
+  font-size: 13px;
+}
+
 .date-button,
-.small-filter { font-size: 13px; }
+.small-filter {
+  font-size: 13px;
+}
 
-.dashboard-kicker { font-size: 11px; }
-.dashboard-header h1 { font-size: 32px; }
-.dashboard-header p { font-size: 14px; }
+.dashboard-kicker {
+  font-size: 11px;
+}
 
-.metric-top > span { font-size: 11px; }
-.metric-title { font-size: 13px; }
-.metric-value { font-size: 29px; }
-.metric-card small { font-size: 12px; }
+.dashboard-header h1 {
+  font-size: 32px;
+}
 
-.card-label { font-size: 11px; }
-.card-header h2 { font-size: 17px; }
+.dashboard-header p {
+  font-size: 14px;
+}
 
-.compliance-number strong { font-size: 40px; }
-.compliance-number span { font-size: 12px; }
-.compliance-number small { font-size: 10px; }
+.metric-top>span {
+  font-size: 11px;
+}
 
-.severity-item { font-size: 12px; }
+.metric-title {
+  font-size: 13px;
+}
 
-.inspection-info strong { font-size: 13px; }
-.inspection-info span { font-size: 11px; }
-.inspection-date { font-size: 11px; }
+.metric-value {
+  font-size: 29px;
+}
+
+.metric-card small {
+  font-size: 12px;
+}
+
+.card-label {
+  font-size: 11px;
+}
+
+.card-header h2 {
+  font-size: 17px;
+}
+
+.compliance-number strong {
+  font-size: 40px;
+}
+
+.compliance-number span {
+  font-size: 12px;
+}
+
+.compliance-number small {
+  font-size: 10px;
+}
+
+.severity-item {
+  font-size: 12px;
+}
+
+.inspection-info strong {
+  font-size: 13px;
+}
+
+.inspection-info span {
+  font-size: 11px;
+}
+
+.inspection-date {
+  font-size: 11px;
+}
 
 .status-pill,
-.action-pill { font-size: 10px; }
-
-.inspection-progress strong { font-size: 11px; }
-.action-row strong { font-size: 12px; }
-.action-row div:nth-child(2) span { font-size: 11px; }
-
-.plant-selector { font-size: 13px; }
-
-/* =====================================================
-   SIDEBAR COLAPSABLE
-   ===================================================== */
-
-.sidebar {
-  transition: width .25s ease, padding .25s ease;
+.action-pill {
+  font-size: 10px;
 }
 
-.sidebar-brand {
-  position: relative;
-  min-width: 0;
+.inspection-progress strong {
+  font-size: 11px;
 }
 
-.sidebar-toggle {
-  position: absolute;
-  top: 14px;
-  right: -11px;
-  width: 26px;
-  height: 26px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255,255,255,.16);
-  border-radius: 50%;
-  background: #ffffff;
-  color: var(--navy);
-  font-size: 16px;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(22,50,79,.18);
-  z-index: 1001;
-  transition: transform .2s ease, background .2s ease, color .2s ease;
+.action-row strong {
+  font-size: 12px;
 }
 
-.sidebar-toggle:hover {
-  background: var(--teal);
-  color: #ffffff;
-  transform: scale(1.05);
+.action-row div:nth-child(2) span {
+  font-size: 11px;
 }
 
-.sidebar.collapsed {
-  width: 82px !important;
-  padding-left: 10px !important;
-  padding-right: 10px !important;
-}
-
-.sidebar.collapsed .sidebar-brand {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.sidebar.collapsed .sidebar-brand-text {
-  width: 0;
-  margin: 0;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.sidebar.collapsed .sidebar-nav {
-  align-items: center;
-}
-
-.sidebar.collapsed .nav-item {
-  justify-content: center;
-  width: 58px;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.sidebar.collapsed .nav-item span {
-  width: 0;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.sidebar.collapsed .nav-icon {
-  margin: 0;
-  font-size: 21px;
-}
-
-.sidebar.collapsed .profile-card {
-  justify-content: center;
-  gap: 0;
-  padding: 8px;
-}
-
-.sidebar.collapsed .profile-info,
-.sidebar.collapsed .profile-more,
-.sidebar.collapsed .sidebar-footer {
-  display: none;
-}
-
-.app-shell .main-area {
-  transition: margin-left .25s ease, width .25s ease;
-}
-
-.app-shell .sidebar.collapsed ~ .main-area {
-  margin-left: 82px !important;
-  width: calc(100% - 82px) !important;
-}
-
-@media (max-width: 900px) {
-  .sidebar-toggle {
-    display: none;
-  }
-
-  .sidebar.collapsed {
-    width: 76px !important;
-  }
-
-  .app-shell .sidebar.collapsed ~ .main-area {
-    margin-left: 76px !important;
-    width: calc(100% - 76px) !important;
-  }
-
-  .nav-item {
-    font-size: 15px;
-  }
-
-  .content {
-    padding: 22px;
-  }
-}
-
-@media (max-width: 560px) {
-  h1 {
-    font-size: 28px;
-  }
-
-  .page-description {
-    font-size: 14px;
-  }
-
-  .metric-title {
-    font-size: 12px;
-  }
-
-  .metric-value {
-    font-size: 27px;
-  }
+.plant-selector {
+  font-size: 13px;
 }
 
 /* =====================================================
-   INSPECTA - SIDEBAR FINAL
-   Corrección estructural del panel lateral.
-   No modifica la escala tipográfica ni los módulos.
+   INSPECTA - LAYOUT ADMINISTRATIVO
    ===================================================== */
 
-/* La página completa ocupa siempre el viewport */
-html,
-body,
-#root {
-  width: 100%;
-  min-width: 0;
-  min-height: 100%;
-  margin: 0;
-}
-
-html {
-  height: 100%;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
-
-body {
-  height: 100%;
-  min-height: 100dvh;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-}
-
-#root {
-  min-height: 100dvh;
-}
-
-/* Contenedor general */
 .app-shell {
-  position: relative;
-  display: block;
+  --sidebar-width: 270px;
+
+  display: flex;
   width: 100%;
   min-width: 0;
-  min-height: 100dvh;
-  height: auto;
-  overflow: visible !important;
+
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.app-shell.sidebar-collapsed {
+  --sidebar-width: 76px;
 }
 
 /* =====================================================
    SIDEBAR
    ===================================================== */
 
-.sidebar {
-  position: fixed !important;
+.app-shell>.sidebar {
+  position: relative;
+  inset: auto;
 
-  inset: 0 auto 0 0 !important;
+  flex: 0 0 var(--sidebar-width);
 
-  width: 270px !important;
-  height: 100dvh !important;
-  min-height: 100dvh !important;
-  max-height: none !important;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
 
-  box-sizing: border-box !important;
+  height: 100%;
+  min-height: 0;
 
-  display: flex !important;
-  flex-direction: column !important;
+  display: flex;
+  flex-direction: column;
 
-  padding: 20px 12px !important;
+  padding: 16px 12px;
+  margin: 0;
 
-  margin: 0 !important;
+  background: var(--navy);
+  color: white;
 
-  background: var(--navy) !important;
-  color: #ffffff !important;
+  overflow: visible;
 
-  overflow: hidden !important;
+  z-index: 10;
 
-  z-index: 2000 !important;
-
-  isolation: isolate;
+  transition:
+    width .22s ease,
+    min-width .22s ease,
+    max-width .22s ease,
+    flex-basis .22s ease;
 }
 
-/* La navegación puede desplazarse solamente si llega a
-   faltar espacio vertical; el panel azul nunca desaparece. */
-.sidebar-nav {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
+/* =====================================================
+   BOTÓN PARA CONTRAER / EXPANDIR
+   ===================================================== */
 
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
+.sidebar-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  flex-shrink: 0;
+
+  padding: 0 3px 10px;
+}
+
+.sidebar-toggle {
+  display: grid;
+  place-items: center;
+
+  width: 36px;
+  height: 36px;
+
+  flex-shrink: 0;
+
+  border: 0;
+  border-radius: 10px;
+
+  background: rgba(255, 255, 255, .06);
+  color: rgba(255, 255, 255, .85);
+
+  font-size: 23px;
+
+  transition:
+    background .2s ease,
+    color .2s ease;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(255, 255, 255, .14);
+  color: white;
+}
+
+.sidebar-toggle:focus-visible,
+.sidebar .nav-item:focus-visible,
+.sidebar .profile-more:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: -2px;
+}
+
+/* =====================================================
+   ENCABEZADO
+   ===================================================== */
+
+.app-shell .sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+
+  flex-shrink: 0;
+  min-width: 0;
+
+  gap: 12px;
+  padding: 5px 10px 24px;
+}
+
+.sidebar-brand .brand-mark {
+  flex-shrink: 0;
+}
+
+.app-shell .sidebar-brand-text {
+  display: block;
+  min-width: 0;
+
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar-logo {
+  width: 54px;
+  height: 54px;
+
+  flex-shrink: 0;
+
+  display: grid;
+  place-items: center;
+
+  background-color: #FFFFFF;
+  border-radius: 12px;
+
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.sidebar-logo img {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: contain;
+}
+
+/* Logo con sidebar contraído */
+
+.sidebar-collapsed .sidebar-logo {
+  width: 44px;
+  height: 44px;
+
+  padding: 6px;
+  border-radius: 10px;
+}
+
+/* =====================================================
+   NAVEGACIÓN
+   ===================================================== */
+
+.sidebar .sidebar-nav {
+  display: flex;
+  flex-direction: column;
+
+  flex: 1 1 auto;
+  min-height: 0;
+
+  gap: 5px;
+  padding-top: 20px;
+
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  overscroll-behavior-y: contain;
 
   scrollbar-width: thin;
+  scrollbar-color:
+    rgba(255, 255, 255, .25) transparent;
 }
 
-/* Perfil/footer quedan pegados a la parte inferior */
+.sidebar-nav .nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+
+  flex-shrink: 0;
+  min-width: 0;
+
+  padding: 12px 14px;
+}
+
+.sidebar-nav .nav-item span {
+  display: block;
+  min-width: 0;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-nav .nav-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* =====================================================
+   PERFIL Y PIE DEL MENÚ
+   ===================================================== */
+
 .sidebar-bottom {
-  flex: 0 0 auto !important;
-  margin-top: auto !important;
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+.app-shell .sidebar .profile-container {
+  margin: 0 3px 15px;
+}
+
+.app-shell .sidebar .profile-card {
+  flex-direction: row;
+  justify-content: flex-start;
+
+  gap: 10px;
+  padding: 10px;
+}
+
+.app-shell .sidebar .profile-info {
+  display: block;
+  min-width: 0;
+}
+
+.app-shell .sidebar .profile-more {
+  display: grid;
+}
+
+.app-shell .sidebar .sidebar-footer {
+  display: flex;
+}
+
+.app-shell .sidebar .profile-menu {
+  left: 0;
+  right: 0;
+
+  bottom: calc(100% + 8px);
+  width: auto;
+}
+
+/* =====================================================
+   SIDEBAR CONTRAÍDO
+   ===================================================== */
+
+.sidebar-collapsed>.sidebar {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.sidebar-collapsed .sidebar-controls {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-collapsed .sidebar-brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebar-collapsed .sidebar-brand-text {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-nav .nav-item {
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.sidebar-collapsed .sidebar-nav .nav-item span {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-nav .nav-icon {
+  font-size: 21px;
+}
+
+.app-shell.sidebar-collapsed .sidebar .profile-container {
+  margin: 0;
+}
+
+.app-shell.sidebar-collapsed .sidebar .profile-card {
+  flex-direction: column;
+  justify-content: center;
+
+  gap: 5px;
+  padding: 6px 2px;
+}
+
+.app-shell.sidebar-collapsed .sidebar .profile-info {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar .sidebar-footer {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .sidebar .profile-menu {
+  left: calc(100% + 12px);
+  right: auto;
+
+  bottom: 0;
+  width: 190px;
 }
 
 /* =====================================================
    CONTENIDO PRINCIPAL
    ===================================================== */
 
-.main-area {
-  width: calc(100% - 270px) !important;
-  min-width: 0 !important;
+.app-shell>.main-area {
+  flex: 1 1 0;
 
-  min-height: 100dvh !important;
-  height: auto !important;
+  width: auto;
+  min-width: 0;
 
-  margin-left: 270px !important;
+  height: 100%;
+  min-height: 0;
 
-  box-sizing: border-box !important;
+  margin: 0;
 
-  background: var(--bg) !important;
+  background: var(--bg);
 
-  overflow: visible !important;
+  overflow-y: auto;
+  overflow-x: auto;
 
-  transition:
-    margin-left .25s ease,
-    width .25s ease;
+  overscroll-behavior-y: contain;
+
+  scrollbar-width: thin;
+  scrollbar-color: #b9c7d3 transparent;
 }
 
-/* Contenido puede crecer sin afectar la altura del sidebar */
-.main-area .content,
-.content {
-  width: 100% !important;
-  min-width: 0 !important;
+.app-shell>.main-area>.content {
+  width: 100%;
+  min-width: 0;
 
-  min-height: 100dvh !important;
-  height: auto !important;
+  min-height: 100%;
+  height: auto;
 
-  box-sizing: border-box !important;
+  padding: 34px;
 
-  overflow: visible !important;
+  box-sizing: border-box;
 }
 
 /* =====================================================
-   SIDEBAR COLAPSADO
+   RESPONSIVE - DESKTOP GRANDE
    ===================================================== */
 
-.sidebar.collapsed {
-  width: 82px !important;
-  min-width: 82px !important;
-  max-width: 82px !important;
-
-  padding-left: 10px !important;
-  padding-right: 10px !important;
-}
-
-.sidebar.collapsed .sidebar-brand {
-  justify-content: center;
-}
-
-.sidebar.collapsed .sidebar-brand-text {
-  width: 0 !important;
-  max-width: 0 !important;
-
-  margin: 0 !important;
-  opacity: 0 !important;
-
-  overflow: hidden !important;
-  pointer-events: none;
-}
-
-.sidebar.collapsed .sidebar-nav {
-  align-items: center !important;
-}
-
-.sidebar.collapsed .nav-item {
-  width: 58px !important;
-  min-width: 58px !important;
-
-  justify-content: center !important;
-
-  padding-left: 0 !important;
-  padding-right: 0 !important;
-}
-
-.sidebar.collapsed .nav-item span {
-  width: 0 !important;
-  max-width: 0 !important;
-
-  opacity: 0 !important;
-
-  overflow: hidden !important;
-  pointer-events: none;
-}
-
-.sidebar.collapsed .nav-icon {
-  margin: 0 !important;
-  font-size: 21px !important;
-}
-
-.sidebar.collapsed .profile-card {
-  justify-content: center !important;
-  gap: 0 !important;
-  padding: 8px !important;
-}
-
-.sidebar.collapsed .profile-info,
-.sidebar.collapsed .profile-more,
-.sidebar.collapsed .sidebar-footer {
-  display: none !important;
-}
-
-.app-shell .sidebar.collapsed ~ .main-area {
-  width: calc(100% - 82px) !important;
-  margin-left: 82px !important;
+@media (min-width: 1400px) {
+  .app-shell>.main-area>.content {
+    padding: 32px 40px;
+  }
 }
 
 /* =====================================================
-   BOTÓN DE COLAPSAR
-   ===================================================== */
-
-.sidebar-toggle {
-  z-index: 2001 !important;
-}
-
-/* =====================================================
-   RESPONSIVE
+   RESPONSIVE - TABLET
    ===================================================== */
 
 @media (max-width: 900px) {
-  .sidebar {
-    width: 76px !important;
-    min-width: 76px !important;
-    max-width: 76px !important;
+  .app-shell.sidebar-expanded {
+    --sidebar-width: 240px;
   }
 
-  .sidebar-toggle {
-    display: none !important;
+  .app-shell.sidebar-collapsed {
+    --sidebar-width: 76px;
   }
 
-  .main-area {
-    width: calc(100% - 76px) !important;
-    margin-left: 76px !important;
+  .app-shell.sidebar-expanded .sidebar-brand-text {
+    display: block;
   }
 
-  .app-shell .sidebar.collapsed ~ .main-area {
-    width: calc(100% - 76px) !important;
-    margin-left: 76px !important;
+  .app-shell>.main-area>.content {
+    padding: 24px;
+  }
+}
+
+/* =====================================================
+   RESPONSIVE - MÓVIL
+   ===================================================== */
+
+@media (max-width: 560px) {
+  .app-shell.sidebar-expanded {
+    --sidebar-width: 220px;
+  }
+
+  .app-shell.sidebar-collapsed {
+    --sidebar-width: 64px;
+  }
+
+  .app-shell.sidebar-collapsed>.sidebar {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .app-shell>.main-area>.content {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 400px) {
+  .app-shell.sidebar-collapsed {
+    --sidebar-width: 58px;
+  }
+
+  .app-shell.sidebar-collapsed>.sidebar {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+
+  .app-shell>.main-area>.content {
+    padding: 12px;
+  }
+}
+
+/* =====================================================
+   VENTANAS CON POCA ALTURA
+   ===================================================== */
+
+@media (max-height: 600px) {
+  .app-shell>.sidebar {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .sidebar-controls {
+    padding-bottom: 5px;
+  }
+
+  .app-shell .sidebar-brand {
+    padding-bottom: 12px;
+  }
+
+  .sidebar .sidebar-nav {
+    padding-top: 10px;
+  }
+
+  .sidebar-bottom {
+    padding-top: 10px;
+  }
+
+  .app-shell .sidebar .sidebar-footer {
+    display: none;
+  }
+}
+
+/* =====================================================
+   ACCESIBILIDAD - MOVIMIENTO REDUCIDO
+   ===================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+
+  .app-shell>.sidebar,
+  .sidebar-toggle,
+  .sidebar .nav-item {
+    transition: none;
+  }
+}
+
+/* =====================================================
+   ORGANIZACIÓN ACTIVA
+   ===================================================== */
+
+.sidebar-organization {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  gap: 10px;
+
+  min-width: 0;
+
+  margin: 14px 3px 0;
+  padding: 10px;
+
+  border-radius: 12px;
+
+  background: rgba(255, 255, 255, .055);
+  border: 1px solid rgba(255, 255, 255, .08);
+}
+
+.sidebar-organization-icon {
+  display: grid;
+  place-items: center;
+
+  width: 36px;
+  height: 36px;
+
+  flex-shrink: 0;
+
+  border-radius: 10px;
+
+  background: rgba(15, 157, 138, .16);
+  color: #5ed0be;
+
+  font-size: 20px;
+}
+
+.sidebar-organization-info {
+  display: flex;
+  flex-direction: column;
+
+  flex: 1;
+  min-width: 0;
+
+  gap: 3px;
+}
+
+.sidebar-organization-info span {
+  color: rgba(255, 255, 255, .55);
+
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.sidebar-organization-info strong {
+  color: white;
+
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar-organization-info small {
+  color: rgba(255, 255, 255, .45);
+
+  font-size: 10px;
+}
+
+.sidebar-organization-info span,
+.sidebar-organization-info strong,
+.sidebar-organization-info small {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* =====================================================
+   ORGANIZACIÓN - SIDEBAR CONTRAÍDO
+   ===================================================== */
+
+.sidebar-collapsed .sidebar-organization {
+  justify-content: center;
+
+  margin: 12px 0 0;
+  padding: 5px;
+}
+
+.sidebar-collapsed .sidebar-organization-info {
+  display: none;
+}
+
+.sidebar-collapsed .sidebar-organization-icon {
+  width: 34px;
+  height: 34px;
+
+  background: transparent;
+
+  font-size: 22px;
+}
+
+
+/* =====================================================
+   ROLES DEL USUARIO
+   ===================================================== */
+
+.profile-info span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+/* =====================================================
+   ESTADOS DEL CONTEXTO DE ORGANIZACIÓN
+   ===================================================== */
+
+.organization-state {
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  min-height: 320px;
+
+  padding: 30px;
+
+  text-align: center;
+
+  background: var(--white);
+  border: 1px solid var(--gray);
+  border-radius: 20px;
+}
+
+.organization-state h2 {
+  margin: 16px 0 8px;
+
+  color: var(--navy);
+
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.organization-state p {
+  max-width: 460px;
+
+  margin: 0 0 20px;
+
+  color: #71808f;
+
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.organization-spinner {
+  width: 36px;
+  height: 36px;
+
+  border: 3px solid var(--gray);
+  border-top-color: var(--teal);
+
+  border-radius: 50%;
+
+  animation: organization-spin .8s linear infinite;
+}
+
+.organization-error-icon {
+  color: var(--critical);
+
+  font-size: 38px;
+}
+
+@keyframes organization-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* =====================================================
+   ORGANIZACIÓN - VENTANAS CON POCA ALTURA
+   ===================================================== */
+
+@media (max-height: 600px) {
+  .sidebar-organization {
+    margin-top: 8px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+}
+
+
+/* =====================================================
+   ACCESIBILIDAD
+   ===================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .organization-spinner {
+    animation: none;
+  }
+}
+
+/* =====================================================
+   ACCESO DENEGADO
+   ===================================================== */
+
+.access-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 460px;
+  padding: 40px 24px;
+  background: #ffffff;
+  border: 1px solid #dce6ee;
+  border-radius: 20px;
+  text-align: center;
+}
+
+.access-denied-icon {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  margin-bottom: 20px;
+  border-radius: 24px;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 38px;
+}
+
+.access-denied-code {
+  margin-bottom: 8px;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.access-denied h1 {
+  margin: 0 0 12px;
+  color: #16324f;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.access-denied p {
+  max-width: 480px;
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.access-denied-organization {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  max-width: 320px;
+  margin: 24px 0;
+  padding: 16px;
+  border: 1px solid #dce6ee;
+  border-radius: 12px;
+  background: #f4f7fa;
+  overflow-wrap: anywhere;
+}
+
+.access-denied-organization span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.access-denied-organization strong {
+  color: #16324f;
+  font-size: 15px;
+}
+
+.access-denied-organization small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.access-denied .access-denied-help {
+  margin-bottom: 24px;
+  font-size: 13px;
+}
+
+.access-denied .primary-button {
+  min-height: 42px;
+}
+
+@media (max-width: 560px) {
+  .access-denied {
+    min-height: 400px;
+    padding: 28px 16px;
+  }
+
+  .access-denied h1 {
+    font-size: 24px;
+  }
+
+  .access-denied-icon {
+    width: 64px;
+    height: 64px;
+    font-size: 30px;
+  }
+}
+
+/* =====================================================
+   INSPECTA - DASHBOARD API INTEGRATION
+   ===================================================== */
+
+/* Selector mensual */
+
+.inspecta-dashboard .dashboard-month-input {
+  font-family: inherit;
+  font-size: 13px;
+  min-width: 180px;
+  min-height: 40px;
+  color: #16324F;
+  cursor: pointer;
+  color-scheme: light;
+}
+
+.inspecta-dashboard .dashboard-month-input:focus {
+  outline: 2px solid rgba(15, 157, 138, .25);
+  border-color: #0F9D8A;
+}
+
+/* Indicadores según permisos */
+
+.inspecta-dashboard .metric-grid {
+  grid-template-columns: repeat(auto-fit,
+      minmax(190px, 1fr));
+}
+
+.inspecta-dashboard .dashboard-main-grid> :only-child,
+.inspecta-dashboard .dashboard-lower-grid> :only-child {
+  grid-column: 1 / -1;
+}
+
+/* Tendencias */
+
+.inspecta-dashboard .trend-neutral {
+  color: #81909D;
+}
+
+.inspecta-dashboard .compliance-number .dashboard-trend-up {
+  color: #16803C;
+}
+
+.inspecta-dashboard .compliance-number .dashboard-trend-down {
+  color: #B42318;
+}
+
+.inspecta-dashboard .compliance-number .dashboard-trend-neutral {
+  color: #81909D;
+}
+
+/* Cuatro niveles de riesgo */
+
+.inspecta-dashboard .severity-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.inspecta-dashboard .severity-dot.high {
+  background: #E67E22;
+}
+
+/* Estados de inspección */
+
+.inspecta-dashboard .status-pill.critical {
+  color: #B42318;
+  background: #FEE4E2;
+}
+
+.inspecta-dashboard .dashboard-row-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #81909D;
+}
+
+.inspecta-dashboard .dashboard-row-button:hover {
+  color: #0F9D8A;
+}
+
+/* Prioridades reales de acciones correctivas */
+
+.inspecta-dashboard .action-row .action-status.priority-low {
+  background: #2673C9;
+}
+
+.inspecta-dashboard .action-row .action-status.priority-medium {
+  background: #F2A900;
+}
+
+.inspecta-dashboard .action-row .action-status.priority-high {
+  background: #E67E22;
+}
+
+.inspecta-dashboard .action-row .action-status.priority-critical {
+  background: #B42318;
+}
+
+.inspecta-dashboard .dashboard-action-info {
+  min-width: 0;
+}
+
+.inspecta-dashboard .dashboard-action-info strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspecta-dashboard .dashboard-action-info span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Carga, errores y estados vacíos */
+
+.inspecta-dashboard .dashboard-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  min-height: 200px;
+  text-align: center;
+}
+
+.inspecta-dashboard .dashboard-state>strong {
+  color: #16324F;
+  font-size: 16px;
+}
+
+.inspecta-dashboard .dashboard-state>span {
+  color: #81909D;
+  font-size: 13px;
+}
+
+.inspecta-dashboard .dashboard-state>ion-icon {
+  font-size: 32px;
+  color: #0F9D8A;
+}
+
+.inspecta-dashboard .dashboard-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  min-height: 150px;
+  text-align: center;
+  color: #81909D;
+  font-size: 13px;
+}
+
+.inspecta-dashboard .dashboard-empty-state ion-icon {
+  color: #AABBC8;
+  font-size: 28px;
+}
+
+/* Responsive */
+
+@media (max-width: 1250px) {
+  .inspecta-dashboard .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .inspecta-dashboard .severity-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 560px) {
-  .sidebar {
-    width: 64px !important;
-    min-width: 64px !important;
-    max-width: 64px !important;
+  .inspecta-dashboard .metric-grid {
+    grid-template-columns: 1fr;
   }
 
-  .main-area {
-    width: calc(100% - 64px) !important;
-    margin-left: 64px !important;
+  .inspecta-dashboard .dashboard-month-input {
+    width: 100%;
+    min-width: 0;
   }
 
-  .app-shell .sidebar.collapsed ~ .main-area {
-    width: calc(100% - 64px) !important;
-    margin-left: 64px !important;
+  .inspecta-dashboard .dashboard-inspection-status {
+    display: none;
   }
 
-  
+  .inspecta-dashboard .severity-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inspecta-dashboard .dashboard-state {
+    padding: 20px;
+  }
+}
+
+/* =====================================================
+   DASHBOARD - AGRUPACIÓN TEMPORAL
+   ===================================================== */
+
+.inspecta-dashboard .dashboard-granularity-select {
+  appearance: none;
+  -webkit-appearance: none;
+
+  min-width: 100px;
+  min-height: 34px;
+
+  padding: 7px 30px 7px 12px;
+
+  border: 1px solid #DCE6EE;
+  border-radius: 9px;
+
+  background-color: #F4F7FA;
+
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2381909D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+
+  color: #16324F;
+
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.inspecta-dashboard .dashboard-granularity-select:hover {
+  border-color: #0F9D8A;
+  background-color: #FFFFFF;
+}
+
+.inspecta-dashboard .dashboard-granularity-select:focus-visible {
+  outline: 2px solid #0F9D8A;
+  outline-offset: 2px;
+}
+
+.inspecta-dashboard .dashboard-approval-period {
+  display: block;
+
+  margin-top: 4px;
+  margin-bottom: 8px;
+
+  color: #81909D;
+
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* =====================================================
+   DASHBOARD - TOOLTIP DE APROBACIÓN
+   ===================================================== */
+
+.inspecta-dashboard .dashboard-chart-tooltip {
+  min-width: 170px;
+
+  padding: 12px 14px;
+
+  border: 1px solid #DCE6EE;
+  border-radius: 12px;
+
+  background-color: #FFFFFF;
+
+  box-shadow: 0 6px 20px rgba(22, 50, 79, 0.10);
+
+  color: #64748B;
+
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.inspecta-dashboard .dashboard-chart-tooltip>strong {
+  display: block;
+
+  margin-bottom: 5px;
+
+  color: #16324F;
+
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.inspecta-dashboard .dashboard-tooltip-rate {
+  margin-bottom: 6px;
+
+  color: #0F9D8A;
+
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.inspecta-dashboard .dashboard-chart-tooltip b {
+  color: #16324F;
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .inspecta-dashboard .dashboard-granularity-select {
+    min-width: 90px;
+    font-size: 11px;
+  }
+}
+
+/* =====================================================
+   DASHBOARD - CARGA INDEPENDIENTE DE GRÁFICAS
+   ===================================================== */
+
+.inspecta-dashboard .dashboard-chart-state {
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 12px;
+
+  width: 100%;
+  min-height: 210px;
+
+  padding: 16px;
+
+  box-sizing: border-box;
+
+  color: #81909D;
+
+  font-size: 12px;
+  text-align: center;
+}
+
+/* =====================================================
+   DASHBOARD - LEYENDA DE SEVERIDAD
+   ===================================================== */
+
+.inspecta-dashboard .severity-summary {
+  display: flex;
+  flex-wrap: wrap;
+
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 12px 20px;
+}
+
+.inspecta-dashboard .severity-item {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: flex-start;
+
+  flex: 0 0 auto;
+
+  gap: 7px;
+
+  width: auto;
+}
+
+.inspecta-dashboard .severity-item strong {
+  margin: 0 0 0 3px;
+
+  flex: 0 0 auto;
+
+  color: #16324F;
+  font-weight: 700;
+}
+
+.inspecta-dashboard .severity-dot {
+  flex-shrink: 0;
+}
+
+@media (max-width: 560px) {
+  .inspecta-dashboard .severity-summary {
+    display: grid;
+
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    gap: 12px 16px;
+  }
 }

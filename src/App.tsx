@@ -1,6 +1,23 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+
+import {
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+} from "react-router-dom";
+
 import type { ReactNode } from "react";
-import { getAuthToken } from "./api/client";
+
+import {
+  API_ACCESS_EVENT,
+  getAuthToken,
+  getOrganizationId,
+} from "./api/client";
+
+import type {
+  ApiAccessEventDetail,
+} from "./api/client";
 
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -12,46 +29,258 @@ import Checklists from "./pages/Checklists";
 import Normativa from "./pages/Normativa";
 import Reportes from "./pages/Reportes";
 import Administracion from "./pages/Administracion";
+import SeleccionOrganizacion from "./pages/SeleccionOrganizacion";
+import RequireCapability from "./components/RequireCapability";
 
-function Placeholder({ title }: { title: string }) {
-  return (
-    <section className="page-section">
-      <span className="eyebrow">Módulo</span>
-      <h1>{title}</h1>
-      <p className="page-description">
-        Este módulo se implementará en la siguiente etapa.
-      </p>
-    </section>
-  );
+import {
+  OrganizationProvider,
+} from "./contexts/OrganizationContext";
+
+/* =====================================================
+   GESTIÓN GLOBAL DE ACCESO
+   ===================================================== */
+
+function ApiAccessHandler() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleAccessInvalidated = (event: Event) => {
+      const { detail } =
+        event as CustomEvent<ApiAccessEventDetail>;
+
+      if (!detail) {
+        return;
+      }
+
+      if (detail.type === "session") {
+        navigate("/login", {
+          replace: true,
+          state: {
+            accessMessage: detail.message,
+          },
+        });
+
+        return;
+      }
+
+      if (detail.type === "organization") {
+        if (!getAuthToken()) {
+          navigate("/login", {
+            replace: true,
+          });
+
+          return;
+        }
+
+        navigate(
+          "/seleccionar-organizacion?mode=recovery",
+          {
+            replace: true,
+            state: {
+              accessMessage: detail.message,
+            },
+          }
+        );
+      }
+    };
+
+    window.addEventListener(
+      API_ACCESS_EVENT,
+      handleAccessInvalidated
+    );
+
+    return () => {
+      window.removeEventListener(
+        API_ACCESS_EVENT,
+        handleAccessInvalidated
+      );
+    };
+  }, [navigate]);
+
+  return null;
 }
 
-function RequireAuth({ children }: { children: ReactNode }) {
-  return getAuthToken() ? <>{children}</> : <Navigate to="/login" replace />;
+/* =====================================================
+   PROTECCIÓN DE SESIÓN
+   ===================================================== */
+
+function RequireLogin({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  if (!getAuthToken()) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
 }
+
+/* =====================================================
+   PROTECCIÓN DE ORGANIZACIÓN
+   ===================================================== */
+
+function RequireOrganization({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  if (!getAuthToken()) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!getOrganizationId()) {
+    return (
+      <Navigate
+        to="/seleccionar-organizacion"
+        replace
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
+/* =====================================================
+   APLICACIÓN
+   ===================================================== */
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
+    <>
+      <ApiAccessHandler />
 
-      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/inspecciones" element={<Inspecciones />} />
-        <Route path="/incidencias" element={<Incidencias />} />
+      <Routes>
+        {/* RUTAS PÚBLICAS */}
+
         <Route
-          path="/acciones-correctivas"
-          element={<AccionesCorrectivas />}
+          path="/login"
+          element={<Login />}
         />
-        <Route path="/checklists" element={<Checklists />} />
-  
-        <Route path="/normativa" element={<Normativa />} />
-        <Route path="/reportes" element={<Reportes />} />
-        <Route path="/administracion" element={<Administracion />} />
-      </Route>
 
-      <Route path="/" element={<Navigate to="/login" replace />} />
+        {/* SELECCIÓN DE ORGANIZACIÓN */}
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+        <Route
+          path="/seleccionar-organizacion"
+          element={
+            <RequireLogin>
+              <SeleccionOrganizacion />
+            </RequireLogin>
+          }
+        />
+
+        {/* RUTAS PROTEGIDAS */}
+
+        <Route
+          element={
+            <RequireOrganization>
+              <OrganizationProvider>
+                <AppLayout />
+              </OrganizationProvider>
+            </RequireOrganization>
+          }
+        >
+          {/* DASHBOARD */}
+
+          <Route
+            path="/dashboard"
+            element={
+              <RequireCapability capability="dashboard">
+                <Dashboard />
+              </RequireCapability>
+            }
+          />
+
+          {/* INSPECCIONES */}
+
+          <Route
+            path="/inspecciones"
+            element={
+              <RequireCapability capability="inspections">
+                <Inspecciones />
+              </RequireCapability>
+            }
+          />
+
+          {/* INCIDENCIAS */}
+
+          <Route
+            path="/incidencias"
+            element={
+              <RequireCapability capability="incidents">
+                <Incidencias />
+              </RequireCapability>
+            }
+          />
+
+          {/* ACCIONES CORRECTIVAS */}
+
+          <Route
+            path="/acciones-correctivas"
+            element={
+              <RequireCapability capability="corrective_actions">
+                <AccionesCorrectivas />
+              </RequireCapability>
+            }
+          />
+
+          {/* CHECKLISTS */}
+
+          <Route
+            path="/checklists"
+            element={
+              <RequireCapability capability="checklists">
+                <Checklists />
+              </RequireCapability>
+            }
+          />
+
+          {/* NORMATIVA */}
+
+          <Route
+            path="/normativa"
+            element={
+              <RequireCapability capability="norms">
+                <Normativa />
+              </RequireCapability>
+            }
+          />
+
+          {/* REPORTES */}
+
+          <Route
+            path="/reportes"
+            element={
+              <RequireCapability capability="reports">
+                <Reportes />
+              </RequireCapability>
+            }
+          />
+
+          {/* ADMINISTRACIÓN */}
+
+          <Route
+            path="/administracion"
+            element={
+              <RequireCapability capability="administration">
+                <Administracion />
+              </RequireCapability>
+            }
+          />
+        </Route>
+
+        {/* REDIRECCIONES */}
+
+        <Route
+          path="/"
+          element={<Navigate to="/login" replace />}
+        />
+
+        <Route
+          path="*"
+          element={<Navigate to="/login" replace />}
+        />
+      </Routes>
+    </>
   );
 }

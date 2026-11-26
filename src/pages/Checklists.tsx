@@ -1,16 +1,28 @@
+
+import { useEffect, useMemo, useState } from "react";
+
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import DeleteIcon from "@mui/icons-material/Delete";
 import AddIcon from "@mui/icons-material/Add";
+import SearchIcon from "@mui/icons-material/Search";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import ChecklistIcon from "@mui/icons-material/Checklist";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutlined";
+import BlockIcon from "@mui/icons-material/Block";
+import LayersOutlinedIcon from "@mui/icons-material/LayersOutlined";
+import ChecklistVersions from "../components/checklists/ChecklistVersions";
+
 import {
   Alert,
   Box,
   Button,
   Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   IconButton,
   InputAdornment,
@@ -22,236 +34,1622 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useMemo, useState } from "react";
 
-type EstadoChecklist = "Activo" | "Borrador" | "Inactivo";
-type Checklist = {
-  id: string;
-  nombre: string;
-  categoria: string;
-  descripcion: string;
-  preguntas: string[];
-  version: string;
-  actualizacion: string;
-  estado: EstadoChecklist;
+import {
+  getAllChecklists,
+  getChecklist,
+  getChecklistActiveVersion,
+  createChecklist,
+  updateChecklist,
+  updateChecklistStatus,
+} from "../services/checklists.service";
+
+import type {
+  Checklist,
+  ChecklistPayload,
+  ActiveChecklistVersion,
+} from "../types/checklists";
+
+const NAVY = "#16324F";
+const GREEN = "#0F9D8A";
+
+type VersionState =
+  | "loading"
+  | "available"
+  | "unavailable"
+  | "error";
+
+interface ChecklistView extends Checklist {
+  activeVersion: ActiveChecklistVersion | null;
+  versionState: VersionState;
+}
+
+const emptyForm: ChecklistPayload = {
+  name: "",
+  description: "",
 };
 
-type FormChecklist = Omit<Checklist, "id" | "actualizacion">;
-
-const STORAGE_KEY = "inspecta_checklists_v1";
-const fechaHoy = () => new Date().toLocaleDateString("es-MX");
-
-const datosIniciales: Checklist[] = [
-  {
-    id: "epp", nombre: "Inspección de EPP", categoria: "Seguridad",
-    descripcion: "Verificación del uso y condiciones del equipo de protección personal.",
-    preguntas: ["¿El personal utiliza el EPP requerido?", "¿El equipo se encuentra en buen estado?", "¿El EPP corresponde al riesgo del puesto?", "¿El personal conoce el uso correcto del equipo?"],
-    version: "v1.2", actualizacion: "05/10/2026", estado: "Activo",
-  },
-  {
-    id: "incendios", nombre: "Inspección contra incendios", categoria: "Seguridad",
-    descripcion: "Verificación de equipos, rutas y condiciones de seguridad contra incendios.",
-    preguntas: ["¿Los extintores están visibles y accesibles?", "¿Las rutas de evacuación están despejadas?", "¿La señalización de emergencia es visible?", "¿Las salidas de emergencia funcionan correctamente?"],
-    version: "v1.0", actualizacion: "03/10/2026", estado: "Activo",
-  },
-  {
-    id: "maquinaria", nombre: "Inspección de maquinaria", categoria: "Seguridad",
-    descripcion: "Revisión de condiciones de seguridad y funcionamiento de maquinaria.",
-    preguntas: ["¿Las guardas de seguridad están instaladas?", "¿El paro de emergencia funciona?", "¿Se observan cables o conexiones dañadas?", "¿El área de operación está libre de obstáculos?"],
-    version: "v1.1", actualizacion: "01/10/2026", estado: "Activo",
-  },
-  {
-    id: "area", nombre: "Inspección de área de trabajo", categoria: "Higiene",
-    descripcion: "Evaluación de las condiciones generales del área de trabajo.",
-    preguntas: ["¿El área está limpia y ordenada?", "¿Los pasillos están despejados?", "¿Los residuos están en contenedores adecuados?", "¿La iluminación es suficiente?"],
-    version: "v1.0", actualizacion: "28/09/2026", estado: "Activo",
-  },
-  {
-    id: "electricas", nombre: "Inspección de instalaciones eléctricas", categoria: "Seguridad",
-    descripcion: "Revisión de instalaciones, conexiones y condiciones eléctricas.",
-    preguntas: ["¿Los cables están aislados y protegidos?", "¿Los tableros eléctricos están señalizados?", "¿Hay conexiones expuestas?"],
-    version: "v0.9", actualizacion: "26/09/2026", estado: "Borrador",
-  },
-  {
-    id: "ergonomia", nombre: "Inspección de ergonomía", categoria: "Higiene",
-    descripcion: "Evaluación de condiciones ergonómicas de los puestos de trabajo.",
-    preguntas: ["¿La estación permite una postura adecuada?", "¿Las herramientas están al alcance?", "¿Se cuenta con pausas o rotación cuando corresponde?"],
-    version: "v1.0", actualizacion: "20/09/2026", estado: "Inactivo",
-  },
-];
-
-const formularioVacio: FormChecklist = {
-  nombre: "", categoria: "Seguridad", descripcion: "", preguntas: [""], version: "v1.0", estado: "Borrador",
+const answerLabels: Record<string, string> = {
+  boolean: "Sí / No",
+  yes_no: "Sí / No",
+  text: "Texto",
+  number: "Numérica",
+  numeric: "Numérica",
+  multiple_choice: "Selección múltiple",
+  single_choice: "Selección única",
+  compliance: "Cumplimiento",
 };
+
+function errorText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "No fue posible completar la solicitud.";
+}
+
+function isNotFound(error: unknown): boolean {
+  if (typeof error === "object" && error !== null) {
+    const value = error as {
+      status?: number;
+      statusCode?: number;
+      code?: string;
+    };
+
+    if (
+      value.status === 404 ||
+      value.statusCode === 404 ||
+      value.code === "not_found"
+    ) {
+      return true;
+    }
+  }
+
+  return /404|not found|no encontrado|no se encontr/i.test(
+    errorText(error)
+  );
+}
+
+function dateText(value: string | null): string {
+  if (!value) return "—";
+
+  const date = new Date(
+    value.length === 10
+      ? `${value}T12:00:00`
+      : value
+  );
+
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("es-MX");
+}
+
+function questionCount(
+  version: ActiveChecklistVersion | null
+): number {
+  if (!version) return 0;
+
+  return version.sections.reduce(
+    (total, section) =>
+      total + (section.questions?.length ?? 0),
+    0
+  );
+}
+
+async function enrichChecklist(
+  checklist: Checklist
+): Promise<ChecklistView> {
+  if (!checklist.status) {
+    return {
+      ...checklist,
+      activeVersion: null,
+      versionState: "unavailable",
+    };
+  }
+
+  try {
+    const response = await getChecklistActiveVersion(
+      checklist.id
+    );
+
+    return {
+      ...checklist,
+      activeVersion: response.data.active_version,
+      versionState: "available",
+    };
+  } catch (error) {
+    return {
+      ...checklist,
+      activeVersion: null,
+      versionState: isNotFound(error)
+        ? "unavailable"
+        : "error",
+    };
+  }
+}
+
+function SummaryCard({
+  label,
+  value,
+  color,
+  icon,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Paper
+      sx={{
+        p: 2.5,
+        border: "1px solid #DCE6EE",
+        borderRadius: 3,
+        boxShadow: "none",
+      }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 2,
+        }}
+      >
+        <Box>
+          <Typography
+            sx={{
+              fontSize: 13,
+              color: "#81909D",
+              fontWeight: 600,
+            }}
+          >
+            {label}
+          </Typography>
+
+          <Typography
+            sx={{
+              fontSize: 30,
+              fontWeight: 700,
+              color: NAVY,
+            }}
+          >
+            {value}
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 48,
+            height: 48,
+            borderRadius: 2,
+            color,
+            bgcolor: `${color}15`,
+          }}
+        >
+          {icon}
+        </Box>
+      </Box>
+    </Paper>
+  );
+}
 
 export default function Checklists() {
-  const [checklists, setChecklists] = useState<Checklist[]>(() => {
-    try {
-      const guardados = localStorage.getItem(STORAGE_KEY);
-      return guardados ? JSON.parse(guardados) as Checklist[] : datosIniciales;
-    } catch {
-      return datosIniciales;
-    }
-  });
+  const [checklists, setChecklists] = useState<ChecklistView[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [reload, setReload] = useState(0);
+
   const [search, setSearch] = useState("");
-  const [categoria, setCategoria] = useState("Todas");
   const [estado, setEstado] = useState("Todos");
-  const [modalFormulario, setModalFormulario] = useState(false);
-  const [modoEdicion, setModoEdicion] = useState(false);
-  const [form, setForm] = useState<FormChecklist>(formularioVacio);
-  const [idEditando, setIdEditando] = useState<string | null>(null);
-  const [seleccionado, setSeleccionado] = useState<Checklist | null>(null);
-  const [confirmarBorrado, setConfirmarBorrado] = useState<Checklist | null>(null);
+
+  const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
 
+  const [modalFormulario, setModalFormulario] = useState(false);
+  const [idEditando, setIdEditando] = useState<string | null>(null);
+  const [form, setForm] = useState<ChecklistPayload>(emptyForm);
+  const [formError, setFormError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [seleccionado, setSeleccionado] =
+    useState<ChecklistView | null>(null);
+
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+  const [errorDetalle, setErrorDetalle] = useState("");
+
+  const [confirmarEstado, setConfirmarEstado] =
+    useState<ChecklistView | null>(null);
+
+  const [actualizandoEstado, setActualizandoEstado] =
+    useState(false);
+
+  const [errorEstado, setErrorEstado] = useState("");
+
+  const [checklistVersiones, setChecklistVersiones] =
+    useState<Checklist | null>(null);
+
+  // Consulta del listado y sus versiones publicadas.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(checklists));
+    let active = true;
+
+    async function cargar() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const result = await getAllChecklists();
+
+        if (!active) return;
+
+        const initial: ChecklistView[] = result.map(
+          (item) => ({
+            ...item,
+            activeVersion: null,
+            versionState: item.status
+              ? "loading"
+              : "unavailable",
+          })
+        );
+
+        setChecklists(initial);
+
+        // Consultar las versiones por grupos para no
+        // enviar demasiadas solicitudes simultáneas.
+        const batchSize = 5;
+
+        for (
+          let index = 0;
+          index < result.length;
+          index += batchSize
+        ) {
+          const batch = result.slice(
+            index,
+            index + batchSize
+          );
+
+          const enriched = await Promise.all(
+            batch.map(enrichChecklist)
+          );
+
+          if (!active) return;
+
+          setChecklists((previous) =>
+            previous.map(
+              (item) =>
+                enriched.find(
+                  (entry) =>
+                    entry.id === item.id
+                ) ?? item
+            )
+          );
+        }
+      } catch (e) {
+        if (active) {
+          setError(
+            `No se pudieron consultar los checklists: ${errorText(e)}`
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void cargar();
+
+    return () => {
+      active = false;
+    };
+  }, [reload]);
+
+  // Consulta del detalle directamente desde la API.
+  useEffect(() => {
+    let active = true;
+
+    setSeleccionado(null);
+    setErrorDetalle("");
+
+    if (!selectedId) {
+      setCargandoDetalle(false);
+
+      return () => {
+        active = false;
+      };
+    }
+
+    setCargandoDetalle(true);
+
+    async function cargarDetalle(id: string) {
+      try {
+        const response = await getChecklist(id);
+
+        const detail = await enrichChecklist(
+          response.data
+        );
+
+        if (active) {
+          setSeleccionado(detail);
+        }
+      } catch (e) {
+        if (active) {
+          setErrorDetalle(errorText(e));
+        }
+      } finally {
+        if (active) {
+          setCargandoDetalle(false);
+        }
+      }
+    }
+
+    void cargarDetalle(selectedId);
+
+    return () => {
+      active = false;
+    };
+  }, [selectedId]);
+
+  const resumen = useMemo(() => {
+    return {
+      total: checklists.length,
+      activos: checklists.filter(
+        (item) => item.status
+      ).length,
+      inactivos: checklists.filter(
+        (item) => !item.status
+      ).length,
+      publicados: checklists.filter(
+        (item) => item.versionState === "available"
+      ).length,
+    };
   }, [checklists]);
 
   const filtrados = useMemo(() => {
     const term = search.trim().toLowerCase();
+
     return checklists.filter((item) => {
-      const matchSearch = !term || item.nombre.toLowerCase().includes(term) || item.descripcion.toLowerCase().includes(term) || item.preguntas.some((p) => p.toLowerCase().includes(term));
-      return matchSearch && (categoria === "Todas" || item.categoria === categoria) && (estado === "Todos" || item.estado === estado);
+      const matchSearch =
+        !term ||
+        item.name.toLowerCase().includes(term) ||
+        (item.description ?? "")
+          .toLowerCase()
+          .includes(term);
+
+      const matchEstado =
+        estado === "Todos" ||
+        (estado === "Activo" && item.status) ||
+        (estado === "Inactivo" && !item.status);
+
+      return matchSearch && matchEstado;
     });
-  }, [checklists, categoria, estado, search]);
+  }, [checklists, search, estado]);
 
-  const abrirNuevo = () => {
-    setModoEdicion(false); setIdEditando(null); setForm({ ...formularioVacio, preguntas: [""] }); setModalFormulario(true);
-  };
-
-  const abrirEdicion = (item: Checklist) => {
-    setModoEdicion(true); setIdEditando(item.id);
-    setForm({ nombre: item.nombre, categoria: item.categoria, descripcion: item.descripcion, preguntas: [...item.preguntas], version: item.version, estado: item.estado });
+  function abrirNuevo() {
+    setIdEditando(null);
+    setForm({ ...emptyForm });
+    setFormError("");
+    setMensaje("");
     setModalFormulario(true);
-  };
+  }
 
-  const actualizarPregunta = (index: number, valor: string) => {
-    setForm((prev) => ({ ...prev, preguntas: prev.preguntas.map((p, i) => i === index ? valor : p) }));
-  };
+  function abrirEdicion(item: Checklist) {
+    setIdEditando(item.id);
 
-  const guardarChecklist = () => {
-    const nombre = form.nombre.trim();
-    if (!nombre || !form.descripcion.trim()) {
-      setMensaje("Completa el nombre y la descripción del checklist.");
-      return;
-    }
-    const preguntas = form.preguntas.map((p) => p.trim()).filter(Boolean);
-    if (preguntas.length === 0) {
-      setMensaje("Agrega al menos una pregunta al checklist.");
-      return;
-    }
-    if (modoEdicion && idEditando) {
-      setChecklists((prev) => prev.map((item) => item.id === idEditando ? { ...item, ...form, nombre, preguntas, actualizacion: fechaHoy() } : item));
-      setMensaje("Checklist actualizado correctamente.");
-    } else {
-      const nuevo: Checklist = { ...form, nombre, preguntas, id: `checklist-${Date.now()}`, actualizacion: fechaHoy(), version: form.version.trim() || "v1.0" };
-      setChecklists((prev) => [nuevo, ...prev]);
-      setMensaje("Checklist creado correctamente.");
-    }
+    setForm({
+      name: item.name,
+      description: item.description ?? "",
+    });
+
+    setFormError("");
+    setMensaje("");
+    setModalFormulario(true);
+  }
+
+  function cerrarFormulario() {
+    if (guardando) return;
+
     setModalFormulario(false);
-  };
+    setFormError("");
+  }
 
-  const eliminarChecklist = () => {
-    if (!confirmarBorrado) return;
-    setChecklists((prev) => prev.filter((item) => item.id !== confirmarBorrado.id));
-    setConfirmarBorrado(null);
-    setMensaje("Checklist eliminado.");
-  };
+  async function guardarChecklist() {
+    if (guardando) return;
 
-  const cambiarEstado = (item: Checklist) => {
-    const nuevoEstado: EstadoChecklist = item.estado === "Activo" ? "Inactivo" : "Activo";
-    setChecklists((prev) => prev.map((actual) => actual.id === item.id ? { ...actual, estado: nuevoEstado, actualizacion: fechaHoy() } : actual));
-  };
+    const name = form.name.trim();
 
-  const cerrarFormulario = () => { setModalFormulario(false); setMensaje(""); };
+    if (!name) {
+      setFormError(
+        "El nombre del checklist es obligatorio."
+      );
+      return;
+    }
+
+    if (name.length > 150) {
+      setFormError(
+        "El nombre no puede superar los 150 caracteres."
+      );
+      return;
+    }
+
+    const description =
+      form.description?.trim() || null;
+
+    if (
+      description &&
+      new TextEncoder().encode(description).length > 65535
+    ) {
+      setFormError(
+        "La descripción supera el tamaño permitido."
+      );
+      return;
+    }
+
+    const payload: ChecklistPayload = {
+      name,
+      description,
+    };
+
+    setGuardando(true);
+    setFormError("");
+    setMensaje("");
+
+    try {
+      if (idEditando) {
+        await updateChecklist(idEditando, payload);
+
+        setMensaje(
+          "Checklist actualizado correctamente."
+        );
+      } else {
+        await createChecklist(payload);
+
+        setMensaje(
+          "Checklist creado correctamente."
+        );
+      }
+
+      setModalFormulario(false);
+      setReload((previous) => previous + 1);
+    } catch (e) {
+      setFormError(errorText(e));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  function abrirConfirmacion(item: ChecklistView) {
+    setErrorEstado("");
+    setMensaje("");
+    setConfirmarEstado(item);
+  }
+
+  async function cambiarEstado() {
+    if (!confirmarEstado || actualizandoEstado) {
+      return;
+    }
+
+    setActualizandoEstado(true);
+    setErrorEstado("");
+
+    try {
+      const response = await updateChecklistStatus(
+        confirmarEstado.id,
+        !confirmarEstado.status
+      );
+
+      setMensaje(
+        response.data.status
+          ? "Checklist activado correctamente."
+          : "Checklist desactivado correctamente."
+      );
+
+      setConfirmarEstado(null);
+      setReload((previous) => previous + 1);
+    } catch (e) {
+      setErrorEstado(errorText(e));
+    } finally {
+      setActualizandoEstado(false);
+    }
+  }
+
+  const tableColumns =
+    "minmax(220px, 1.2fr) minmax(260px, 1.5fr) 120px 135px 130px 115px 140px";
 
   return (
     <section className="page-section">
-      <Stack component="div" direction={{ xs: "column", md: "row" }} spacing={2} sx={{ justifyContent: "space-between", alignItems: { xs: "stretch", md: "center" }, mb: 3 }}>
+      {/* Encabezado */}
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={2}
+        sx={{
+          justifyContent: "space-between",
+          alignItems: {
+            xs: "stretch",
+            md: "center",
+          },
+          mb: 3,
+        }}
+      >
         <Box>
-          <Typography sx={{ fontSize: 13, color: "#81909D", fontWeight: 600 }}>MÓDULO</Typography>
-          <Typography component="h1" sx={{ fontSize: { xs: 28, md: 34 }, fontWeight: 700, color: "#16324F" }}>Checklists</Typography>
-          <Typography sx={{ fontSize: 15, color: "#81909D", mt: 0.5 }}>Administra cuestionarios y preguntas con fundamento normativo.</Typography>
+          <Typography
+            sx={{
+              fontSize: 13,
+              color: "#81909D",
+              fontWeight: 600,
+            }}
+          >
+            MÓDULO
+          </Typography>
+
+          <Typography
+            component="h1"
+            sx={{
+              fontSize: { xs: 28, md: 34 },
+              fontWeight: 700,
+              color: NAVY,
+            }}
+          >
+            Checklists
+          </Typography>
+
+          <Typography
+            sx={{
+              fontSize: 15,
+              color: "#81909D",
+              mt: 0.5,
+            }}
+          >
+            Administra cuestionarios de inspección,
+            versiones y preguntas con fundamento normativo.
+          </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={abrirNuevo} sx={{ minHeight: 44, backgroundColor: "#16324F", "&:hover": { backgroundColor: "#0F263D" } }}>Nuevo checklist</Button>
+
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={abrirNuevo}
+          sx={{
+            minHeight: 44,
+            bgcolor: NAVY,
+            textTransform: "none",
+            "&:hover": {
+              bgcolor: "#0F263D",
+            },
+          }}
+        >
+          Nuevo checklist
+        </Button>
       </Stack>
 
-      {mensaje && <Alert severity="success" onClose={() => setMensaje("")} sx={{ mb: 2 }}>{mensaje}</Alert>}
-      <Alert severity="info" sx={{ mb: 2 }}>Los cambios se guardan en este navegador. La sincronización con otros usuarios requiere conectar el backend.</Alert>
+      {/* Mensajes generales */}
+      {mensaje && (
+        <Alert
+          severity="success"
+          onClose={() => setMensaje("")}
+          sx={{ mb: 2 }}
+        >
+          {mensaje}
+        </Alert>
+      )}
 
-      <Stack component="div" direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
-        <TextField size="small" placeholder="Buscar checklist o pregunta..." value={search} onChange={(event) => setSearch(event.target.value)} sx={{ flex: 1, minWidth: 240, "& .MuiInputBase-input": { fontSize: 14 } }} slotProps={{ input: { startAdornment: <InputAdornment position="start"><VisibilityOutlinedIcon sx={{ fontSize: 20, color: "#81909D" }} /></InputAdornment> } }} />
-        <FormControl size="small" sx={{ minWidth: 170 }}><Select value={categoria} onChange={(event) => setCategoria(event.target.value)}><MenuItem value="Todas">Todas las categorías</MenuItem><MenuItem value="Seguridad">Seguridad</MenuItem><MenuItem value="Higiene">Higiene</MenuItem></Select></FormControl>
-        <FormControl size="small" sx={{ minWidth: 150 }}><Select value={estado} onChange={(event) => setEstado(event.target.value)}><MenuItem value="Todos">Todos los estados</MenuItem><MenuItem value="Activo">Activos</MenuItem><MenuItem value="Borrador">Borradores</MenuItem><MenuItem value="Inactivo">Inactivos</MenuItem></Select></FormControl>
+      {error && (
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() =>
+                setReload((previous) => previous + 1)
+              }
+            >
+              Reintentar
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      )}
+
+      {/* Indicadores */}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "1fr",
+            sm: "repeat(2, 1fr)",
+            lg: "repeat(4, 1fr)",
+          },
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        <SummaryCard
+          label="Total de checklists"
+          value={resumen.total}
+          color={NAVY}
+          icon={<ChecklistIcon />}
+        />
+
+        <SummaryCard
+          label="Activos"
+          value={resumen.activos}
+          color={GREEN}
+          icon={<CheckCircleOutlineIcon />}
+        />
+
+        <SummaryCard
+          label="Inactivos"
+          value={resumen.inactivos}
+          color="#B42318"
+          icon={<BlockIcon />}
+        />
+
+        <SummaryCard
+          label="Con versión activa"
+          value={resumen.publicados}
+          color="#2673C9"
+          icon={<LayersOutlinedIcon />}
+        />
+      </Box>
+
+      {/* Filtros */}
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.5}
+        sx={{ mb: 2 }}
+      >
+        <TextField
+          size="small"
+          placeholder="Buscar checklist..."
+          value={search}
+          onChange={(event) =>
+            setSearch(event.target.value)
+          }
+          sx={{
+            flex: 1,
+            minWidth: 200,
+            "& .MuiInputBase-input": {
+              fontSize: 14,
+            },
+          }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon
+                    sx={{
+                      fontSize: 20,
+                      color: "#81909D",
+                    }}
+                  />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+
+        <FormControl
+          size="small"
+          sx={{ minWidth: 180 }}
+        >
+          <Select
+            value={estado}
+            onChange={(event) =>
+              setEstado(event.target.value)
+            }
+          >
+            <MenuItem value="Todos">
+              Todos los estados
+            </MenuItem>
+
+            <MenuItem value="Activo">
+              Activos
+            </MenuItem>
+
+            <MenuItem value="Inactivo">
+              Inactivos
+            </MenuItem>
+          </Select>
+        </FormControl>
+
+        <Button
+          variant="outlined"
+          startIcon={<RefreshIcon />}
+          disabled={loading}
+          onClick={() =>
+            setReload((previous) => previous + 1)
+          }
+          sx={{
+            color: GREEN,
+            borderColor: GREEN,
+            textTransform: "none",
+          }}
+        >
+          Actualizar
+        </Button>
       </Stack>
 
-      <Paper sx={{ overflowX: "auto", border: "1px solid #DCE6EE", borderRadius: 3, boxShadow: "none" }}>
-        <Box sx={{ minWidth: 1120, display: "grid", gridTemplateColumns: "230px 130px minmax(250px, 1fr) 80px 80px 110px 110px 130px" }}>
-          {["CHECKLIST", "CATEGORÍA", "DESCRIPCIÓN", "PREGUNTAS", "VERSIÓN", "ACTUALIZACIÓN", "ESTADO", "ACCIONES"].map((header) => <Box key={header} sx={{ p: 2, fontSize: 12, fontWeight: 700, color: "#71808C", backgroundColor: "#F4F7FA" }}>{header}</Box>)}
-          {filtrados.map((item) => (
-            <Box key={item.id} sx={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "230px 130px minmax(250px, 1fr) 80px 80px 110px 110px 130px", borderTop: "1px solid #DCE6EE", alignItems: "stretch" }}>
-              <Box sx={{ p: 2, fontSize: 14, fontWeight: 700, color: "#16324F", overflowWrap: "anywhere" }}>{item.nombre}</Box>
-              <Box sx={{ p: 2 }}><Chip size="small" label={item.categoria} variant="outlined" sx={{ minWidth: 100, fontWeight: 600 }} /></Box>
-              <Box sx={{ p: 2, fontSize: 13, color: "#81909D", lineHeight: 1.45 }}>{item.descripcion}</Box>
-              <Box sx={{ p: 2, fontSize: 14, color: "#273746" }}>{item.preguntas.length}</Box>
-              <Box sx={{ p: 2, fontSize: 14, color: "#16324F", fontWeight: 700 }}>{item.version}</Box>
-              <Box sx={{ p: 2, fontSize: 13, color: "#81909D" }}>{item.actualizacion}</Box>
-              <Box sx={{ p: 2 }}><Tooltip title="Pulsa para activar o desactivar"><Chip size="small" onClick={() => cambiarEstado(item)} label={item.estado} sx={{ minWidth: 90, color: "#FFF", fontWeight: 700, cursor: "pointer", backgroundColor: item.estado === "Activo" ? "#16803C" : item.estado === "Borrador" ? "#F2A900" : "#B42318" }} /></Tooltip></Box>
-              <Stack component="div" direction="row" spacing={0.25} sx={{ p: 1, alignItems: "center", justifyContent: "center" }}>
-                <Tooltip title="Ver preguntas"><IconButton size="small" onClick={() => setSeleccionado(item)} color="primary"><VisibilityOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-                <Tooltip title="Editar"><IconButton size="small" onClick={() => abrirEdicion(item)} color="primary"><EditOutlinedIcon fontSize="small" /></IconButton></Tooltip>
-                <Tooltip title="Eliminar"><IconButton size="small" onClick={() => setConfirmarBorrado(item)} color="error"><DeleteIcon fontSize="small" /></IconButton></Tooltip>
-              </Stack>
+      {/* Tabla principal */}
+      <Paper
+        sx={{
+          overflowX: "auto",
+          border: "1px solid #DCE6EE",
+          borderRadius: 3,
+          boxShadow: "none",
+        }}
+      >
+        <Box
+          sx={{
+            minWidth: 1070,
+            display: "grid",
+            gridTemplateColumns: tableColumns,
+          }}
+        >
+          {[
+            "CHECKLIST",
+            "DESCRIPCIÓN",
+            "PREGUNTAS",
+            "VERSIÓN ACTIVA",
+            "ACTUALIZACIÓN",
+            "ESTADO",
+            "ACCIONES",
+          ].map((header) => (
+            <Box
+              key={header}
+              sx={{
+                p: 2,
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#71808C",
+                bgcolor: "#F4F7FA",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {header}
             </Box>
           ))}
-          {filtrados.length === 0 && <Box sx={{ gridColumn: "1 / -1", p: 4, textAlign: "center", color: "#81909D" }}>No hay checklists que coincidan con la búsqueda.</Box>}
+
+          {loading && checklists.length === 0 ? (
+            <Box
+              sx={{
+                gridColumn: "1 / -1",
+                p: 5,
+                textAlign: "center",
+              }}
+            >
+              <CircularProgress
+                size={30}
+                sx={{ color: GREEN }}
+              />
+
+              <Typography
+                sx={{
+                  mt: 2,
+                  fontSize: 14,
+                  color: "#81909D",
+                }}
+              >
+                Consultando checklists...
+              </Typography>
+            </Box>
+          ) : (
+            filtrados.map((item) => (
+              <Box
+                key={item.id}
+                sx={{
+                  gridColumn: "1 / -1",
+                  display: "grid",
+                  gridTemplateColumns: tableColumns,
+                  borderTop: "1px solid #DCE6EE",
+                  alignItems: "center",
+                }}
+              >
+                <Box
+                  sx={{
+                    p: 2,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: NAVY,
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {item.name}
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 2,
+                    fontSize: 13,
+                    color: "#526477",
+                    lineHeight: 1.5,
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {item.description ||
+                    "Sin descripción"}
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 2,
+                    fontSize: 14,
+                    color: NAVY,
+                  }}
+                >
+                  {item.versionState === "loading" ? (
+                    <CircularProgress size={16} />
+                  ) : item.activeVersion ? (
+                    questionCount(item.activeVersion)
+                  ) : (
+                    "—"
+                  )}
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 2,
+                    fontSize: 13,
+                    color: NAVY,
+                    fontWeight: 600,
+                  }}
+                >
+                  {item.versionState === "loading" ? (
+                    <CircularProgress size={16} />
+                  ) : item.activeVersion ? (
+                    item.activeVersion.version
+                  ) : item.versionState === "error" ? (
+                    <Typography
+                      sx={{
+                        fontSize: 12,
+                        color: "error.main",
+                      }}
+                    >
+                      No disponible
+                    </Typography>
+                  ) : (
+                    <Typography
+                      sx={{
+                        fontSize: 12,
+                        color: "#81909D",
+                      }}
+                    >
+                      {item.status
+                        ? "Sin versión activa"
+                        : "No aplica"}
+                    </Typography>
+                  )}
+                </Box>
+
+                <Box
+                  sx={{
+                    p: 2,
+                    fontSize: 13,
+                    color: "#81909D",
+                  }}
+                >
+                  {dateText(item.updated_at)}
+                </Box>
+
+                <Box sx={{ p: 2 }}>
+                  <Tooltip
+                    title={
+                      item.status
+                        ? "Desactivar checklist"
+                        : "Activar checklist"
+                    }
+                  >
+                    <Chip
+                      size="small"
+                      label={
+                        item.status
+                          ? "Activo"
+                          : "Inactivo"
+                      }
+                      onClick={() =>
+                        abrirConfirmacion(item)
+                      }
+                      sx={{
+                        minWidth: 85,
+                        color: "#FFF",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        bgcolor: item.status
+                          ? "#16803C"
+                          : "#B42318",
+                      }}
+                    />
+                  </Tooltip>
+                </Box>
+
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  sx={{
+                    p: 1,
+                    justifyContent: "center",
+                  }}
+                >
+                  <Tooltip title="Ver detalle">
+                    <IconButton
+                      size="small"
+                      onClick={() => setSelectedId(item.id)}
+                      sx={{ color: NAVY }}
+                    >
+                      <VisibilityOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Editar checklist">
+                    <IconButton
+                      size="small"
+                      onClick={() => abrirEdicion(item)}
+                      sx={{ color: GREEN }}
+                    >
+                      <EditOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+
+                  <Tooltip title="Gestionar versiones">
+                    <IconButton
+                      size="small"
+                      onClick={() => setChecklistVersiones(item)}
+                      sx={{ color: GREEN }}
+                    >
+                      <LayersOutlinedIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              </Box>
+            ))
+          )}
+
+          {!loading && filtrados.length === 0 && (
+            <Box
+              sx={{
+                gridColumn: "1 / -1",
+                p: 4,
+                textAlign: "center",
+                color: "#81909D",
+              }}
+            >
+              {error
+                ? "No fue posible cargar el listado."
+                : "No hay checklists que coincidan con la búsqueda."}
+            </Box>
+          )}
         </Box>
-        <Box sx={{ p: 1.75, display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #DCE6EE" }}>
-          <Typography sx={{ fontSize: 13, color: "#81909D" }}>Mostrando {filtrados.length} de {checklists.length} checklists</Typography>
-          <Typography sx={{ fontSize: 13, color: "#81909D" }}>{filtrados.length === 1 ? "1 resultado" : `${filtrados.length} resultados`}</Typography>
+
+        <Box
+          sx={{
+            p: 1.75,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            borderTop: "1px solid #DCE6EE",
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: 13,
+              color: "#81909D",
+            }}
+          >
+            Mostrando {filtrados.length} de{" "}
+            {checklists.length} checklists
+          </Typography>
+
+          <Typography
+            sx={{
+              fontSize: 13,
+              color: "#81909D",
+            }}
+          >
+            {filtrados.length === 1
+              ? "1 resultado"
+              : `${filtrados.length} resultados`}
+          </Typography>
         </Box>
       </Paper>
 
-      <Dialog open={modalFormulario} onClose={cerrarFormulario} fullWidth maxWidth="md">
-        <DialogTitle sx={{ color: "#16324F", fontWeight: 700 }}>{modoEdicion ? "Editar checklist" : "Crear checklist"}</DialogTitle>
+      {/* Formulario de creación y edición */}
+      <Dialog
+        open={modalFormulario}
+        onClose={cerrarFormulario}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle
+          sx={{
+            color: NAVY,
+            fontWeight: 700,
+          }}
+        >
+          {idEditando
+            ? "Editar checklist"
+            : "Crear checklist"}
+        </DialogTitle>
+
         <DialogContent dividers>
-          <Stack component="div" spacing={2} sx={{ pt: 1 }}>
-            <TextField label="Nombre del checklist" required fullWidth value={form.nombre} onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))} />
-            <Stack component="div" direction={{ xs: "column", sm: "row" }} spacing={2}>
-              <TextField select label="Categoría" fullWidth value={form.categoria} onChange={(e) => setForm((p) => ({ ...p, categoria: e.target.value }))}><MenuItem value="Seguridad">Seguridad</MenuItem><MenuItem value="Higiene">Higiene</MenuItem></TextField>
-              <TextField label="Versión" fullWidth value={form.version} onChange={(e) => setForm((p) => ({ ...p, version: e.target.value }))} placeholder="v1.0" />
-              <TextField select label="Estado" fullWidth value={form.estado} onChange={(e) => setForm((p) => ({ ...p, estado: e.target.value as EstadoChecklist }))}><MenuItem value="Activo">Activo</MenuItem><MenuItem value="Borrador">Borrador</MenuItem><MenuItem value="Inactivo">Inactivo</MenuItem></TextField>
-            </Stack>
-            <TextField label="Descripción" required fullWidth multiline minRows={2} value={form.descripcion} onChange={(e) => setForm((p) => ({ ...p, descripcion: e.target.value }))} />
-            <Typography sx={{ color: "#16324F", fontWeight: 700 }}>Preguntas del checklist</Typography>
-            {form.preguntas.map((pregunta, index) => <Box key={index} sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1, alignItems: { xs: "stretch", sm: "center" } }}><TextField fullWidth label={`Pregunta ${index + 1}`} value={pregunta} onChange={(e) => actualizarPregunta(index, e.target.value)} /><Button color="error" disabled={form.preguntas.length === 1} onClick={() => setForm((p) => ({ ...p, preguntas: p.preguntas.filter((_, i) => i !== index) }))}>Quitar</Button></Box>)}
-            <Box><Button startIcon={<AddIcon />} onClick={() => setForm((p) => ({ ...p, preguntas: [...p.preguntas, ""] }))}>Agregar pregunta</Button></Box>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            {formError && (
+              <Alert severity="error">
+                {formError}
+              </Alert>
+            )}
+
+            <TextField
+              label="Nombre del checklist"
+              required
+              fullWidth
+              disabled={guardando}
+              value={form.name}
+              onChange={(event) =>
+                setForm((previous) => ({
+                  ...previous,
+                  name: event.target.value,
+                }))
+              }
+              helperText={`${form.name.length}/150 caracteres`}
+              slotProps={{
+                htmlInput: {
+                  maxLength: 150,
+                },
+              }}
+            />
+
+            <TextField
+              label="Descripción"
+              fullWidth
+              multiline
+              minRows={4}
+              disabled={guardando}
+              value={form.description ?? ""}
+              onChange={(event) =>
+                setForm((previous) => ({
+                  ...previous,
+                  description: event.target.value,
+                }))
+              }
+            />
+
+            {!idEditando && (
+              <Alert severity="info">
+                El checklist se creará activo.
+                Sus versiones, secciones y preguntas
+                se administrarán por separado.
+              </Alert>
+            )}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}><Button onClick={cerrarFormulario}>Cancelar</Button><Button variant="contained" onClick={guardarChecklist} sx={{ backgroundColor: "#16324F" }}>{modoEdicion ? "Guardar cambios" : "Crear checklist"}</Button></DialogActions>
+
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            disabled={guardando}
+            onClick={cerrarFormulario}
+          >
+            Cancelar
+          </Button>
+
+          <Button
+            variant="contained"
+            disabled={guardando}
+            onClick={() => void guardarChecklist()}
+            sx={{
+              bgcolor: NAVY,
+              textTransform: "none",
+            }}
+          >
+            {guardando
+              ? "Guardando..."
+              : idEditando
+                ? "Guardar cambios"
+                : "Crear checklist"}
+          </Button>
+        </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(seleccionado)} onClose={() => setSeleccionado(null)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ color: "#16324F", fontWeight: 700 }}>Detalle del checklist</DialogTitle>
+      {/* Modal de detalle */}
+      <Dialog
+        open={Boolean(selectedId)}
+        onClose={() => setSelectedId(null)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle
+          sx={{
+            color: NAVY,
+            fontWeight: 700,
+          }}
+        >
+          Detalle del checklist
+        </DialogTitle>
+
         <DialogContent dividers>
-          {seleccionado && <Stack component="div" spacing={2}>
-            <Typography variant="h6" sx={{ color: "#16324F", fontWeight: 700 }}>{seleccionado.nombre}</Typography>
-            <Box sx={{ display: "flex", flexDirection: "row", flexWrap: "wrap", gap: 1 }}><Chip label={seleccionado.categoria} variant="outlined" /><Chip label={seleccionado.estado} color={seleccionado.estado === "Activo" ? "success" : seleccionado.estado === "Borrador" ? "warning" : "error"} /></Box>
-            <Typography>{seleccionado.descripcion}</Typography>
-            <Typography variant="body2" color="text.secondary">Versión {seleccionado.version} · Actualizado: {seleccionado.actualizacion}</Typography>
-            <Typography sx={{ color: "#16324F", fontWeight: 700 }}>Preguntas ({seleccionado.preguntas.length})</Typography>
-            {seleccionado.preguntas.map((pregunta, index) => <Paper key={`${index}-${pregunta}`} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}><Typography>{index + 1}. {pregunta}</Typography></Paper>)}
-          </Stack>}
+          {cargandoDetalle ? (
+            <Box
+              sx={{
+                p: 4,
+                textAlign: "center",
+              }}
+            >
+              <CircularProgress
+                sx={{ color: GREEN }}
+              />
+            </Box>
+          ) : errorDetalle ? (
+            <Alert severity="error">
+              {errorDetalle}
+            </Alert>
+          ) : seleccionado ? (
+            <Stack spacing={2}>
+              <Typography
+                variant="h6"
+                sx={{
+                  color: NAVY,
+                  fontWeight: 700,
+                }}
+              >
+                {seleccionado.name}
+              </Typography>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 1,
+                }}
+              >
+                <Chip
+                  label={
+                    seleccionado.status
+                      ? "Activo"
+                      : "Inactivo"
+                  }
+                  color={
+                    seleccionado.status
+                      ? "success"
+                      : "error"
+                  }
+                />
+
+                {seleccionado.activeVersion && (
+                  <Chip
+                    variant="outlined"
+                    label={`Versión ${seleccionado.activeVersion.version}`}
+                    sx={{
+                      color: GREEN,
+                      borderColor: GREEN,
+                    }}
+                  />
+                )}
+              </Box>
+
+              <Typography
+                sx={{
+                  fontSize: 14,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {seleccionado.description ||
+                  "Sin descripción registrada."}
+              </Typography>
+
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    sm: "repeat(2, 1fr)",
+                  },
+                  gap: 2,
+                }}
+              >
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 2, borderRadius: 2 }}
+                >
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      color: "#81909D",
+                    }}
+                  >
+                    Fecha de creación
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      color: NAVY,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {dateText(seleccionado.created_at)}
+                  </Typography>
+                </Paper>
+
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 2, borderRadius: 2 }}
+                >
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      color: "#81909D",
+                    }}
+                  >
+                    Última actualización
+                  </Typography>
+
+                  <Typography
+                    sx={{
+                      color: NAVY,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {dateText(seleccionado.updated_at)}
+                  </Typography>
+                </Paper>
+              </Box>
+
+              <Divider />
+
+              <Typography
+                sx={{
+                  color: NAVY,
+                  fontWeight: 700,
+                }}
+              >
+                Versión publicada
+              </Typography>
+
+              {seleccionado.versionState === "error" ? (
+                <Alert severity="warning">
+                  No fue posible consultar la versión
+                  activa del checklist.
+                </Alert>
+              ) : !seleccionado.activeVersion ? (
+                <Alert severity="info">
+                  {seleccionado.status
+                    ? "Este checklist no tiene una versión activa disponible."
+                    : "El checklist está inactivo. Su versión activa no está disponible para consulta."}
+                </Alert>
+              ) : (
+                <>
+                  <Box
+                    sx={{
+                      p: 2,
+                      bgcolor: "#F4F7FA",
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontWeight: 700,
+                        color: NAVY,
+                      }}
+                    >
+                      Versión{" "}
+                      {seleccionado.activeVersion.version}
+                    </Typography>
+
+                    <Typography
+                      sx={{
+                        fontSize: 13,
+                        color: "#526477",
+                        mt: 0.5,
+                      }}
+                    >
+                      Publicada el{" "}
+                      {dateText(
+                        seleccionado.activeVersion
+                          .published_at
+                      )}
+                    </Typography>
+
+                    <Typography
+                      sx={{
+                        fontSize: 13,
+                        color: "#526477",
+                        mt: 0.5,
+                      }}
+                    >
+                      {seleccionado.activeVersion.sections.length}{" "}
+                      secciones ·{" "}
+                      {questionCount(
+                        seleccionado.activeVersion
+                      )}{" "}
+                      preguntas activas
+                    </Typography>
+                  </Box>
+
+                  {seleccionado.activeVersion.sections.map(
+                    (section, sectionIndex) => (
+                      <Paper
+                        key={section.id}
+                        variant="outlined"
+                        sx={{
+                          p: 2,
+                          borderRadius: 2,
+                        }}
+                      >
+                        <Typography
+                          sx={{
+                            color: NAVY,
+                            fontWeight: 700,
+                            mb: 1.5,
+                          }}
+                        >
+                          {sectionIndex + 1}.{" "}
+                          {section.name}
+                        </Typography>
+
+                        <Stack spacing={1.5}>
+                          {!section.questions?.length && (
+                            <Typography
+                              sx={{
+                                fontSize: 13,
+                                color: "#81909D",
+                              }}
+                            >
+                              Sin preguntas activas.
+                            </Typography>
+                          )}
+
+                          {section.questions?.map(
+                            (question, index) => (
+                              <Box
+                                key={question.id}
+                                sx={{
+                                  p: 1.5,
+                                  border:
+                                    "1px solid #DCE6EE",
+                                  borderRadius: 2,
+                                }}
+                              >
+                                <Typography
+                                  sx={{
+                                    fontSize: 14,
+                                    fontWeight: 600,
+                                    color: NAVY,
+                                  }}
+                                >
+                                  {index + 1}.{" "}
+                                  {question.question_text}
+                                </Typography>
+
+                                {question.description && (
+                                  <Typography
+                                    sx={{
+                                      fontSize: 13,
+                                      color: "#526477",
+                                      mt: 0.5,
+                                    }}
+                                  >
+                                    {question.description}
+                                  </Typography>
+                                )}
+
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 0.75,
+                                    mt: 1.5,
+                                  }}
+                                >
+                                  <Chip
+                                    size="small"
+                                    variant="outlined"
+                                    label={
+                                      answerLabels[
+                                      question.answer_type
+                                      ] ??
+                                      question.answer_type
+                                    }
+                                  />
+
+                                  {question.required && (
+                                    <Chip
+                                      size="small"
+                                      label="Obligatoria"
+                                      color="info"
+                                      variant="outlined"
+                                    />
+                                  )}
+
+                                  {question.allows_evidence && (
+                                    <Chip
+                                      size="small"
+                                      label="Permite evidencia"
+                                      color="success"
+                                      variant="outlined"
+                                    />
+                                  )}
+                                </Box>
+
+                                {!!question.norm_requirements?.length && (
+                                  <Box sx={{ mt: 1.5 }}>
+                                    <Typography
+                                      sx={{
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        color: NAVY,
+                                      }}
+                                    >
+                                      Requisitos normativos
+                                    </Typography>
+
+                                    {question.norm_requirements.map(
+                                      (requirement) => (
+                                        <Typography
+                                          key={
+                                            requirement.link_id
+                                          }
+                                          sx={{
+                                            fontSize: 12,
+                                            color: "#526477",
+                                            mt: 0.5,
+                                          }}
+                                        >
+                                          {requirement.code}
+                                          {requirement.description
+                                            ? ` — ${requirement.description}`
+                                            : ""}
+                                        </Typography>
+                                      )
+                                    )}
+                                  </Box>
+                                )}
+                              </Box>
+                            )
+                          )}
+                        </Stack>
+                      </Paper>
+                    )
+                  )}
+                </>
+              )}
+            </Stack>
+          ) : null}
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}><Button onClick={() => setSeleccionado(null)}>Cerrar</Button>{seleccionado && <Button variant="contained" onClick={() => { const item = seleccionado; setSeleccionado(null); abrirEdicion(item); }} sx={{ backgroundColor: "#16324F" }}>Editar</Button>}</DialogActions>
+
+        <DialogActions sx={{ p: 2 }}>
+          {seleccionado && (
+            <Button
+              variant="outlined"
+              startIcon={<EditOutlinedIcon />}
+              onClick={() => {
+                const item = seleccionado;
+                setSelectedId(null);
+                abrirEdicion(item);
+              }}
+              sx={{
+                color: GREEN,
+                borderColor: GREEN,
+                textTransform: "none",
+              }}
+            >
+              Editar checklist
+            </Button>
+          )}
+
+          <Button
+            variant="contained"
+            onClick={() => setSelectedId(null)}
+            sx={{
+              bgcolor: NAVY,
+              textTransform: "none",
+            }}
+          >
+            Cerrar detalle
+          </Button>
+        </DialogActions>
       </Dialog>
 
-      <Dialog open={Boolean(confirmarBorrado)} onClose={() => setConfirmarBorrado(null)}>
-        <DialogTitle>¿Eliminar checklist?</DialogTitle>
-        <DialogContent><Typography>Se eliminará «{confirmarBorrado?.nombre}» de este navegador. Esta acción no se puede deshacer.</Typography></DialogContent>
-        <DialogActions sx={{ p: 2 }}><Button onClick={() => setConfirmarBorrado(null)}>Cancelar</Button><Button color="error" variant="contained" onClick={eliminarChecklist}>Eliminar</Button></DialogActions>
+      {/* Confirmación de cambio de estado */}
+      <Dialog
+        open={Boolean(confirmarEstado)}
+        onClose={() => {
+          if (!actualizandoEstado) {
+            setConfirmarEstado(null);
+            setErrorEstado("");
+          }
+        }}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle
+          sx={{
+            color: NAVY,
+            fontWeight: 700,
+          }}
+        >
+          {confirmarEstado?.status
+            ? "Desactivar checklist"
+            : "Activar checklist"}
+        </DialogTitle>
+
+        <DialogContent>
+          <Typography>
+            ¿Deseas{" "}
+            {confirmarEstado?.status
+              ? "desactivar"
+              : "activar"}{" "}
+            el checklist «{confirmarEstado?.name}»?
+          </Typography>
+
+          {confirmarEstado?.status && (
+            <Alert
+              severity="warning"
+              sx={{ mt: 2 }}
+            >
+              El checklist dejará de estar disponible
+              como checklist activo. Sus versiones y
+              registros existentes se conservarán.
+            </Alert>
+          )}
+
+          {errorEstado && (
+            <Alert
+              severity="error"
+              sx={{ mt: 2 }}
+            >
+              {errorEstado}
+            </Alert>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            disabled={actualizandoEstado}
+            onClick={() => {
+              setConfirmarEstado(null);
+              setErrorEstado("");
+            }}
+          >
+            Cancelar
+          </Button>
+
+          <Button
+            variant="contained"
+            disabled={actualizandoEstado}
+            onClick={() => void cambiarEstado()}
+            sx={{
+              bgcolor: confirmarEstado?.status
+                ? "#B42318"
+                : GREEN,
+              textTransform: "none",
+              "&:hover": {
+                bgcolor: confirmarEstado?.status
+                  ? "#912018"
+                  : "#0C8878",
+              },
+            }}
+          >
+            {actualizandoEstado
+              ? "Guardando..."
+              : confirmarEstado?.status
+                ? "Desactivar"
+                : "Activar"}
+          </Button>
+        </DialogActions>
       </Dialog>
+
+      {checklistVersiones && (
+        <ChecklistVersions
+          key={checklistVersiones.id}
+          checklist={checklistVersiones}
+          onClose={() => setChecklistVersiones(null)}
+          onChanged={() =>
+            setReload((previous) => previous + 1)
+          }
+        />
+      )}
+
     </section>
   );
 }

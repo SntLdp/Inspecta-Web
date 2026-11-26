@@ -14,7 +14,10 @@ export default defineConfig({
         theme_color: "#16324F",
         background_color: "#F4F7FA",
         display: "standalone"
-      }
+      },
+      workbox: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      },
     })
   ]
 });
