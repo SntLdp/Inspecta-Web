@@ -42,6 +42,9 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import Alert from "@mui/material/Alert";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
+import CancelIcon from "@mui/icons-material/Cancel";
+
 import InspectionReviewActions from "../components/InspectionReviewActions";
 
 import { getProfileMembership } from "../services/profile.service";
@@ -559,16 +562,24 @@ export default function Inspecciones() {
 
   const total = datosInspecciones.length;
 
-  const completadas = datosInspecciones.filter(
-    (item) => item.estado === "Completada" || item.estado === "Confirmada"
-  ).length;
-
   const enProceso = datosInspecciones.filter(
     (item) => item.estado === "En proceso"
   ).length;
 
   const pendientes = datosInspecciones.filter(
     (item) => item.estado === "Pendiente"
+  ).length;
+
+  const completadas = datosInspecciones.filter(
+    (item) => item.estado === "Completada"
+  ).length;
+
+  const confirmadas = datosInspecciones.filter(
+    (item) => item.estado === "Confirmada"
+  ).length;
+
+  const rechazadas = datosInspecciones.filter(
+    (item) => item.estado === "Rechazada"
   ).length;
 
   const generarPDF = async () => {
@@ -815,8 +826,8 @@ export default function Inspecciones() {
           display: "grid",
           gridTemplateColumns: {
             xs: "1fr",
-            sm: "repeat(2, 1fr)",
-            lg: "repeat(4, 1fr)",
+            sm: "repeat(2, minmax(0, 1fr))",
+            md: "repeat(3, minmax(0, 1fr))",
           },
           gap: 2,
           mb: 3,
@@ -847,11 +858,27 @@ export default function Inspecciones() {
         />
 
         <SummaryCard
-          title="Completadas"
+          title="Por revisar"
           value={completadas}
+          icon={<FactCheckIcon />}
+          iconColor="#B77900"
+          iconBackground="#FFF5D9"
+        />
+
+        <SummaryCard
+          title="Confirmadas"
+          value={confirmadas}
           icon={<CheckCircleIcon />}
           iconColor="#16803C"
           iconBackground="#EAF7EF"
+        />
+
+        <SummaryCard
+          title="Rechazadas"
+          value={rechazadas}
+          icon={<CancelIcon />}
+          iconColor="#C62828"
+          iconBackground="#FDECEC"
         />
       </Box>
 
