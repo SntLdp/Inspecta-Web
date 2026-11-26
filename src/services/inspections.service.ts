@@ -1,4 +1,3 @@
-
 import { apiRequest } from "../api/client";
 
 import type {
@@ -8,6 +7,7 @@ import type {
   InspectionStatus,
   InspectionChecklist,
   InspectionAnswer,
+  InspectionReviewInput,
   PaginatedResponse,
 } from "../types/inspections";
 
@@ -79,5 +79,20 @@ export function getInspectionAnswers(
   return apiRequest<PaginatedResponse<InspectionAnswer>>(
     `/inspections/${encodeURIComponent(id)}/answers?${params.toString()}`,
     { method: "GET" }
+  );
+}
+
+export function reviewInspection(
+  id: string,
+  data: InspectionReviewInput,
+  signal?: AbortSignal
+): Promise<ApiResponse<InspectionDetail>> {
+  return apiRequest<ApiResponse<InspectionDetail>>(
+    `/inspections/${encodeURIComponent(id)}/status`,
+    {
+      method: "PUT",
+      body: data,
+      signal,
+    }
   );
 }
